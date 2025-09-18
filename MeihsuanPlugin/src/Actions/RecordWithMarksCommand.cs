@@ -1,4 +1,4 @@
-namespace Loupedeck.AAAPlugin
+namespace Loupedeck.MeihsuanPlugin
 {
     using System;
     using System.Collections.Generic;
