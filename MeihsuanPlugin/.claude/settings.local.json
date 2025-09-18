@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:gist.github.com)",
+      "WebFetch(domain:loupedeck.github.io)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
