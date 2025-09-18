@@ -30,6 +30,10 @@
     </Reference>
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+  </ItemGroup>
+
   <Target Name="CopyPackage" AfterTargets="PostBuildEvent">
     <Message Text="📦 Copying package files..." Importance="High" />
     <ItemGroup>
@@ -60,5 +64,11 @@
 
     <Message Text="🧼 Plugin link file and output directories have been cleaned!" Importance="High" />
   </Target>
+
+  <ItemGroup>
+    <Content Include="python_scripts\**\*.*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
 
 </Project>
