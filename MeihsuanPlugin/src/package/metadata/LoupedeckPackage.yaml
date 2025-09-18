@@ -54,7 +54,7 @@ pluginCapabilities:
     #- HasApplication
 
     # Uncomment the following line if the plugin sends keyboard shortcuts to the target application.
-    #- ActivatesApplication
+    - ActivatesApplication
 
 # Minimum Loupedeck version supported by the plugin.
 minimumLoupedeckVersion: 6.0
