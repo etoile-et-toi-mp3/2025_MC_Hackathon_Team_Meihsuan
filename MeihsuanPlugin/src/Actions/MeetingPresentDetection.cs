@@ -1,4 +1,4 @@
-namespace Loupedeck.ExamplePlugin 
+namespace Loupedeck.MeihsuanPlugin
 {     
     using System;     
     using System.Diagnostics;
