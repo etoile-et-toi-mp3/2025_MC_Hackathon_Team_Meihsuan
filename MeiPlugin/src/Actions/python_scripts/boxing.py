@@ -4,6 +4,7 @@ import numpy as np
 import math
 import random
 import platform
+import pygame
 
 mp_hands = mp.solutions.hands
 mp_drawing = mp.solutions.drawing_utils
@@ -14,6 +15,45 @@ hands = mp_hands.Hands(
     min_detection_confidence=0.5,
     min_tracking_confidence=0.5
 )
+
+cap = cv2.VideoCapture(0)
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+
+pygame.mixer.init()
+punch_sound = pygame.mixer.Sound(r"D:\MeiPlugin\src\Actions\python_scripts\punch.wav")  # 請改成你音效路徑
+
+class TextDisplay:
+    def __init__(self):
+        self.active_texts = []
+
+    def add_text(self, text, position, color, duration=60):
+        self.active_texts.append({
+            'text': text,
+            'position': position,
+            'color': color,
+            'duration': duration,
+            'original_duration': duration
+        })
+
+    def update_and_draw(self, frame):
+        texts_to_remove = []
+        for i, text_data in enumerate(self.active_texts):
+            alpha = text_data['duration'] / text_data['original_duration']
+            if alpha > 0:
+                color = tuple(int(c * alpha) for c in text_data['color'])
+                
+                cv2.putText(frame, text_data['text'], 
+                            (text_data['position'][0] + 3, text_data['position'][1] + 3),
+                            cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 0), 8)
+                
+                cv2.putText(frame, text_data['text'], text_data['position'],
+                            cv2.FONT_HERSHEY_SIMPLEX, 2, color, 5)
+                text_data['duration'] -= 1
+            else:
+                texts_to_remove.append(i)
+        for i in reversed(texts_to_remove):
+            self.active_texts.pop(i)
 
 def create_crack_lines(center, num_lines=8, max_length=100):
     lines = []
@@ -33,6 +73,42 @@ def create_crack_lines(center, num_lines=8, max_length=100):
             branch_end_y = int(branch_start_y + math.sin(branch_angle) * branch_length)
             lines.append([(branch_start_x, branch_start_y), (branch_end_x, branch_end_y)])
     return lines
+
+def draw_screen_cracks(frame, crack_effects):
+    for crack_data in crack_effects:
+        lines = crack_data['lines']
+        alpha = crack_data['alpha']
+        for line in lines:
+            start_point = line[0]
+            end_point = line[1]
+            intensity = int(255 * alpha)
+            cv2.line(frame, start_point, end_point, (intensity, intensity, 255), 4)
+            cv2.line(frame, start_point, end_point, (255, 255, 255), 2)
+    return frame
+
+def setup_transparent_window():
+    window_name = "Boxing Game"
+    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+    cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+    cv2.setWindowProperty(window_name, cv2.WND_PROP_TOPMOST, 1)
+
+    if platform.system() == "Windows":
+        import win32gui
+        import win32con
+        import time
+        cv2.waitKey(100)
+        hwnd = win32gui.FindWindow(None, window_name)
+        if hwnd:
+            extended_style = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
+            win32gui.SetWindowLong(hwnd, win32con.GWL_EXSTYLE,
+                                   extended_style | win32con.WS_EX_LAYERED)
+            
+            win32gui.SetLayeredWindowAttributes(hwnd, 0x000000, 0, win32con.LWA_COLORKEY)
+    return window_name
+
+def create_transparent_background(width, height):
+    
+    return np.zeros((height, width, 3), dtype=np.uint8)
 
 def is_fist(hand_landmarks):
     landmarks = hand_landmarks.landmark
@@ -72,86 +148,6 @@ def calculate_hand_compactness(hand_landmarks):
     compactness = avg_distance / (width * height + 0.001)
     return compactness
 
-def draw_screen_cracks(frame, crack_effects):
-    for crack_data in crack_effects:
-        lines = crack_data['lines']
-        alpha = crack_data['alpha']
-        for line in lines:
-            start_point = line[0]
-            end_point = line[1]
-            intensity = int(255 * alpha)
-            cv2.line(frame, start_point, end_point, (intensity, intensity, 255), 4)
-            cv2.line(frame, start_point, end_point, (255, 255, 255), 2)
-    return frame
-
-def create_transparent_background(width, height):
-    return np.zeros((height, width, 3), dtype=np.uint8)
-
-def setup_transparent_window():
-    window_name = "Boxing Game"
-    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-    
-    cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-    
-    cv2.setWindowProperty(window_name, cv2.WND_PROP_TOPMOST, 1)
-    
-    if platform.system() == "Windows":
-        import win32gui
-        import win32con
-        try:
-            
-            cv2.waitKey(100)
-            hwnd = win32gui.FindWindow(None, window_name)
-            if hwnd:
-                extended_style = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
-                win32gui.SetWindowLong(hwnd, win32con.GWL_EXSTYLE, 
-                                     extended_style | win32con.WS_EX_LAYERED)
-                win32gui.SetLayeredWindowAttributes(hwnd, 0x000000, 0, win32con.LWA_COLORKEY)
-        except ImportError:
-            print("Win32 modules not available, using basic transparency")
-        except Exception as e:
-            print(f"Transparency setup failed: {e}")
-    
-    return window_name
-
-class TextDisplay:
-    def __init__(self):
-        self.active_texts = []
-    
-    def add_text(self, text, position, color, duration=60):
-        self.active_texts.append({
-            'text': text,
-            'position': position,
-            'color': color,
-            'duration': duration,
-            'original_duration': duration
-        })
-    
-    def update_and_draw(self, frame):
-        texts_to_remove = []
-        for i, text_data in enumerate(self.active_texts):
-            alpha = text_data['duration'] / text_data['original_duration']
-            if alpha > 0:
-                color = tuple(int(c * alpha) for c in text_data['color'])
-                
-                cv2.putText(frame, text_data['text'], 
-                           (text_data['position'][0] + 3, text_data['position'][1] + 3),
-                           cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 0), 8)
-                
-                cv2.putText(frame, text_data['text'], text_data['position'],
-                           cv2.FONT_HERSHEY_SIMPLEX, 2, color, 5)
-                
-                text_data['duration'] -= 1
-            else:
-                texts_to_remove.append(i)
-        
-        for i in reversed(texts_to_remove):
-            self.active_texts.pop(i)
-
-cap = cv2.VideoCapture(0)
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-
 window_name = setup_transparent_window()
 text_display = TextDisplay()
 score = 0
@@ -161,9 +157,7 @@ cooldown = 0
 crack_effects = []
 prev_center_x = None
 
-print("Boxing Game Started!")
-print("Make a fist and punch towards the camera!")
-print("Press ESC to exit")
+print("Boxing Game Started! Make a fist and punch towards the camera! Press ESC to exit.")
 
 while cap.isOpened():
     success, frame = cap.read()
@@ -172,9 +166,7 @@ while cap.isOpened():
     
     frame = cv2.flip(frame, 1)
     frame_height, frame_width = frame.shape[:2]
-    
     display_frame = create_transparent_background(frame_width, frame_height)
-    
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     result = hands.process(rgb_frame)
     
@@ -187,48 +179,41 @@ while cap.isOpened():
             handedness = result.multi_handedness[hand_idx].classification[0].label
             is_fist_shape = is_fist(hand_landmarks)
             compactness = calculate_hand_compactness(hand_landmarks)
-            
             xs = [lm.x for lm in hand_landmarks.landmark]
             ys = [lm.y for lm in hand_landmarks.landmark]
             width = max(xs) - min(xs)
             height = max(ys) - min(ys)
             area = width * height
-            
             center_x = int(sum(xs) / len(xs) * frame_width)
             center_y = int(sum(ys) / len(ys) * frame_height)
             punch_position = (center_x, center_y)
-            
             delta_x = 0 if prev_center_x is None else center_x - prev_center_x
 
             if prev_area is not None and prev_compactness is not None:
                 growth = area - prev_area
                 compactness_change = compactness - prev_compactness
-                
                 if cooldown == 0 and is_fist_shape and growth > 0.010 and compactness_change < -0.05:
                     score += 10
                     cooldown = 15
                     punch_detected = True
-                    
+                    punch_sound.play()
                     if handedness == "Left" and delta_x > 40:
                         punch_type = ("LEFT HOOK!", (255, 100, 100))
                     elif handedness == "Right" and delta_x < -40:
                         punch_type = ("RIGHT HOOK!", (100, 255, 100))
                     else:
                         punch_type = ("STRAIGHT!", (100, 100, 255))
-                    
                     text_display.add_text(punch_type[0], 
-                                        (punch_position[0] - 120, punch_position[1] - 30),
-                                        punch_type[1], 
-                                        duration=90)
-
+                                          (punch_position[0] - 120, punch_position[1] - 30),
+                                          punch_type[1], duration=90)
             prev_area = area
             prev_compactness = compactness
             prev_center_x = center_x
 
     if punch_detected and punch_position:
         crack_lines = create_crack_lines(punch_position, 
-                                       num_lines=random.randint(12, 20), 
-                                       max_length=random.randint(150, 250))
+                                         num_lines=random.randint(12, 20), 
+                                         max_length=random.randint(150, 250))
         crack_effects.append({
             'lines': crack_lines, 
             'alpha': 1.0, 
@@ -240,10 +225,8 @@ while cap.isOpened():
         crack_data['alpha'] -= crack_data['fade_speed']
         if crack_data['alpha'] <= 0:
             crack_effects_to_remove.append(i)
-    
     for i in reversed(crack_effects_to_remove):
         crack_effects.pop(i)
-
     if crack_effects:
         display_frame = draw_screen_cracks(display_frame, crack_effects)
 
@@ -252,20 +235,22 @@ while cap.isOpened():
     if cooldown > 0:
         cooldown -= 1
 
+    padding = 40  
+    per_digit_width = 30  
+    score_length = padding * 2 + len(str(score)) * per_digit_width
+    score_length = max(score_length, 280) 
     score_bg = display_frame.copy()
-    cv2.rectangle(score_bg, (20, 20), (280, 100), (50, 50, 50), -1)
+    cv2.rectangle(score_bg, (20, 20), (20 + score_length, 100), (50, 50, 50), -1)
     cv2.addWeighted(score_bg, 0.8, display_frame, 0.2, 0, display_frame)
-    
-    cv2.rectangle(display_frame, (20, 20), (280, 100), (255, 255, 255), 2)
-    
+    cv2.rectangle(display_frame, (20, 20), (20 + score_length, 100), (255, 255, 255), 2)
+
     cv2.putText(display_frame, f"Score: {score}", (38, 78),
                 cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 0), 6)
-    
     cv2.putText(display_frame, f"Score: {score}", (35, 75),
                 cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 3)
+    
 
     cv2.imshow(window_name, display_frame)
-    
     key = cv2.waitKey(1) & 0xFF
     if key == 27: 
         break
