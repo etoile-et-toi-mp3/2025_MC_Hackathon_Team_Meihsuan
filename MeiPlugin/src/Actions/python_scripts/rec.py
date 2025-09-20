@@ -48,16 +48,72 @@ def _scan_key(vk, up=False):
     ev.U.ki = KEYBDINPUT(0, sc, KEYEVENTF_SCANCODE | (KEYEVENTF_KEYUP if up else 0), 0, None)
     SendInput(1, ctypes.byref(ev), ctypes.sizeof(ev))
 
+# ---------------- Captures scan ----------
+def _captures_dirs():
+    # 先用你已確認的預設，其次常見候選
+    home = Path.home()
+    preferred = home / "Videos" / "Captures"
+    if preferred.exists():
+        return [preferred]
+    cands = [
+        home / "OneDrive" / "Videos" / "Captures",
+        home / "OneDrive" / "影片" / "Captures",
+        home / "影片" / "Captures",
+    ]
+    return [p for p in cands if p.exists()]
 
+def _write_detected_video(log_path: Path, start_iso: str):
+    """停止時寫入實際影片路徑（只掃一次、從最近檔開始）"""
+    try:
+        with open(log_path, "a", encoding="utf-8") as f:
+            dirs = _captures_dirs()
+            if dirs:
+                f.write("# Probe capture dirs:\n")
+                for d in dirs: f.write(f"#  - {d}\n")
+            try:
+                start_dt = datetime.datetime.fromisoformat(start_iso)
+                start_cutoff = start_dt.timestamp() - 60
+            except Exception:
+                start_cutoff = 0.0
+
+            latest = None
+            latest_mtime = -1.0
+            for d in dirs:
+                # 直接按修改時間倒序遍歷（效率較好）
+                try:
+                    files = sorted(d.glob("*.mp4"), key=lambda p: p.stat().st_mtime, reverse=True)
+                except Exception:
+                    files = list(d.glob("*.mp4"))
+                for p in files:
+                    try:
+                        mt = p.stat().st_mtime
+                        if mt >= start_cutoff:
+                            latest = p; latest_mtime = mt
+                            break
+                    except Exception:
+                        pass
+                if latest: break
+
+            if latest:
+                f.write(f"# Detected video: {latest}\n")
+            else:
+                f.write("# Detected video: <none found since session start>\n")
+    except Exception:
+        pass
+    
 # ---------------- Desktop note file helpers ----------------
 def _desktop_dir():
     up = os.environ.get("USERPROFILE") or str(Path.home())
     d = Path(up) / "Desktop"
     return d if d.exists() else Path.home() / "Desktop"
+    # return Path(r"C:\Users\seash\Videos\Captures")
 
 def _desktop_note_path(session_id: str) -> Path:
+    # dir = _desktop_dir()
+    dirs = _captures_dirs()
     # 每個 session 一個獨立檔，避免覆蓋
-    return _desktop_dir() / f"MeiRecord_Notes_{session_id}.txt"
+    # return _captures_dirs() / f"MeiRecord_Notes_{session_id}.txt"
+    return dirs[0] / f"MeiRecord_Notes_{session_id}.txt"
 
 def _init_desktop_note(session_id: str):
     """建立/覆寫桌面筆記檔，寫入標頭"""
@@ -239,58 +295,7 @@ def fmt_elapsed(start_utc_iso):
     s = int(delta.total_seconds()); h, rem = divmod(s, 3600); m, s = divmod(rem, 60)
     return (f"{h:02d}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"), delta
 
-# ---------------- Captures scan ----------
-def _captures_dirs():
-    # 先用你已確認的預設，其次常見候選
-    home = Path.home()
-    preferred = home / "Videos" / "Captures"
-    if preferred.exists():
-        return [preferred]
-    cands = [
-        home / "OneDrive" / "Videos" / "Captures",
-        home / "OneDrive" / "影片" / "Captures",
-        home / "影片" / "Captures",
-    ]
-    return [p for p in cands if p.exists()]
 
-def _write_detected_video(log_path: Path, start_iso: str):
-    """停止時寫入實際影片路徑（只掃一次、從最近檔開始）"""
-    try:
-        with open(log_path, "a", encoding="utf-8") as f:
-            dirs = _captures_dirs()
-            if dirs:
-                f.write("# Probe capture dirs:\n")
-                for d in dirs: f.write(f"#  - {d}\n")
-            try:
-                start_dt = datetime.datetime.fromisoformat(start_iso)
-                start_cutoff = start_dt.timestamp() - 60
-            except Exception:
-                start_cutoff = 0.0
-
-            latest = None
-            latest_mtime = -1.0
-            for d in dirs:
-                # 直接按修改時間倒序遍歷（效率較好）
-                try:
-                    files = sorted(d.glob("*.mp4"), key=lambda p: p.stat().st_mtime, reverse=True)
-                except Exception:
-                    files = list(d.glob("*.mp4"))
-                for p in files:
-                    try:
-                        mt = p.stat().st_mtime
-                        if mt >= start_cutoff:
-                            latest = p; latest_mtime = mt
-                            break
-                    except Exception:
-                        pass
-                if latest: break
-
-            if latest:
-                f.write(f"# Detected video: {latest}\n")
-            else:
-                f.write("# Detected video: <none found since session start>\n")
-    except Exception:
-        pass
 
 # ---------------- Tk note editor ----------
 def mark_editor(prefix):
