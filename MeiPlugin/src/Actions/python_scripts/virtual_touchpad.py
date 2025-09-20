@@ -55,6 +55,7 @@ gesture_start_time = 0
 last_seen_time = 0
 cancel_cooldown = 1  # seconds
 gesture_cancel_time = 0
+detected_gesture = None
 ok_origin = None
 ok_unitpixels = None
 app_offset = 0
@@ -72,7 +73,7 @@ VX_REL_THRESH = 3.5  # in hand-widths per second (tune 3.0 ~ 5.0)
 DIST_REL_THRESH = 0.6  # must travel at least 0.6 hand-widths within WINDOW_SEC
 
 # variables for SPEED SWIPE DETECTION
-VX_THRESH = 3
+VX_THRESH = 1.5
 # Pixels/sec threshold to consider a "fast" swipe.
 # With 1280x720 frames, ~1000–1600 px/s is a good starting range.
 
@@ -80,10 +81,10 @@ DIST_THRESH = 0.1
 # Require the horizontal distance to exceed this many pixels within the window,
 # as a fraction of frame width (e.g., 18%)
 
-HORIZ_RATIO = 0.55
+HORIZ_RATIO = 0.7
 # How "horizontal" it must be: |vy| <= HORIZ_RATIO * |vx|
 
-WINDOW_SEC = 0.5
+WINDOW_SEC = 0.85
 # Time window (seconds) to estimate velocity over recent samples
 
 TRIGGER_COOLDOWN = 2
@@ -108,6 +109,17 @@ def hand_area(landmarks):
     """
     xs = [lm.x for lm in landmarks]
     ys = [lm.y for lm in landmarks]
+    min_x, max_x = min(xs), max(xs)
+    min_y, max_y = min(ys), max(ys)
+    return (max_x - min_x), (max_y - min_y), (max_x - min_x) * (max_y - min_y)
+
+
+def palm_area(landmarks):
+    """
+    returns length of x, length of y, and area
+    """
+    xs = [lm.x for lm in landmarks[0:5]]  # wrist + thumb base + index base + pinky base
+    ys = [lm.y for lm in landmarks[0:5]]
     min_x, max_x = min(xs), max(xs)
     min_y, max_y = min(ys), max(ys)
     return (max_x - min_x), (max_y - min_y), (max_x - min_x) * (max_y - min_y)
@@ -165,12 +177,12 @@ def is_two_gesture(lm):
     v_pinky = normalize(v_pinky)
 
     im_dot = v_index[0] * v_middle[0] + v_index[1] * v_middle[1]
-    mr_dot = v_middle[0] * v_ring[0] + v_middle[1] * v_ring[1]
+    mp_dot = v_middle[0] * v_pinky[0] + v_middle[1] * v_pinky[1]
     # rp_dot = v_ring[0] * v_pinky[0] + v_ring[1] * v_pinky[1]
 
     # print(f"imdot: {im_dot:.3f}, mrdot: {mr_dot:.3f}, rpdot: {rp_dot:.3f}")
     # Threshold for "opposite" direction (dot < -0.7 is about 135 degrees apart)
-    return im_dot > 0.5 and mr_dot < -0.75
+    return im_dot > 0.5 and mp_dot < -0.6
 
 
 def is_ok_gesture(lm, close_threshold=0.1):
@@ -210,12 +222,12 @@ def is_four_gesture(lm):
 
 def decide_gesture(lm):
     calculate_all_straightness(lm)
-    if is_four_gesture(lm):
-        return "four"
-    if is_ok_gesture(lm):
-        return "ok"
     if is_two_gesture(lm):
         return "two"
+    if is_ok_gesture(lm):
+        return "ok"
+    if is_four_gesture(lm):
+        return "four"
     # if is_three_gesture(lm):
     #     return "three"
     return None
@@ -242,13 +254,13 @@ def fast_swipe_detector(lm, track_hist, w, h, now):
     global last_trigger_time
     # Only evaluate if we have enough recent samples
     vx, vy, dx, dy = estimate_velocity(list(track_hist))
-    hand_wide_portion = max(0.1, hand_area(lm)[0])  # avoid div by zero
+    hand_wide_portion = max(0.1, palm_area(lm)[0])  # avoid div by zero
 
     # Check horizontal dominance and speed
     fast_enough = abs(vx) / (hand_wide_portion * SCREEN_W) >= VX_THRESH and abs(dy) <= HORIZ_RATIO * abs(dx)
     diff_side = (track_hist[0][1] - track_hist[0][3]) * (track_hist[-1][1] - track_hist[-1][3]) < 0
 
-    print(f"abs vx: {abs(vx):.3f}, hand width: {hand_wide_portion * SCREEN_W:.3f}, fast_enough: {fast_enough}, firstdiff: {track_hist[0][1] - track_hist[0][3]:.3f}, lastdiff: {track_hist[-1][1] - track_hist[-1][3]:.3f}, diff_side: {diff_side}")
+    print(f"abs vx: {abs(vx):.3f}, hand width: {hand_wide_portion * SCREEN_W:.3f}, absdy: {abs(dy):.3f}, horiz_ratio x abs(dx): {HORIZ_RATIO * abs(dx):.3f}, fast_enough: {fast_enough}, firstdiff: {track_hist[0][1] - track_hist[0][3]:.3f}, lastdiff: {track_hist[-1][1] - track_hist[-1][3]:.3f}, diff_side: {diff_side}")
 
 
     if fast_enough and (now - last_trigger_time) >= TRIGGER_COOLDOWN and diff_side:
@@ -669,12 +681,7 @@ while cap.isOpened():
 
             # simply update the last seen time for the gesture
             if gesture is not None and gesture == detected_gesture:
-                track_hist.append((now, x, y, hand.landmark[0].x * SCREEN_W))
                 last_seen_time = now
-                # Keep a sliding window of samples (using middle finger, since it is used in all gestures)
-                # And trim it to the desired time window (WINDOW_SEC)
-                while track_hist and (now - track_hist[0][0]) > WINDOW_SEC:
-                    track_hist.popleft()
         else:
             # hand is detected but no known gesture is posed
             if gesture is not None and now - last_seen_time > cancel_cooldown:
@@ -692,6 +699,12 @@ while cap.isOpened():
                 print("======================")
                 print()
                 gesture = None
+        
+        track_hist.append((now, x, y, hand.landmark[0].x * SCREEN_W))
+        # Keep a sliding window of samples (using middle finger, since it is used in all gestures)
+        # And trim it to the desired time window (WINDOW_SEC)
+        while track_hist and (now - track_hist[0][0]) > WINDOW_SEC:
+            track_hist.popleft()
     else:
         # hand is not even detected
         if gesture is not None and now - last_seen_time > cancel_cooldown:
@@ -786,7 +799,8 @@ while cap.isOpened():
     if gesture is not None and x is not None and y is not None:
         # Always draw cursor (or restrict to gesture == "ok")
         draw_cursor(hud, x, y, (0, 255, 255))
-        draw_gesture_points(hud, x, y, gesture)
+        if gesture == detected_gesture:
+            draw_gesture_points(hud, x, y, gesture)
 
         if gesture is not None and gesture == "ok" and ok_origin is not None:
             cv2.line(hud, (x, 0), (x, SCREEN_H), (0, 120, 255), 1)
