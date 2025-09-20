@@ -84,7 +84,7 @@ DIST_THRESH = 0.1
 HORIZ_RATIO = 0.7
 # How "horizontal" it must be: |vy| <= HORIZ_RATIO * |vx|
 
-WINDOW_SEC = 0.5
+WINDOW_SEC = 0.85
 # Time window (seconds) to estimate velocity over recent samples
 
 TRIGGER_COOLDOWN = 2
