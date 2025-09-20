@@ -19,6 +19,14 @@ def switch_and_paste(window_title):
         window = windows[0]
         window.activate()
         pyautogui.sleep(0.3)
+                # 在 activate() 後加入這段
+        win_box = window.box  # x, y, width, height
+        click_x = win_box.left + win_box.width // 2
+        click_y = win_box.top + int(win_box.height * 0.95)  # 下半部
+
+        pyautogui.click(click_x, click_y)
+        pyautogui.sleep(0.2)
+
 
         modifier_key = 'command' if platform.system() == "Darwin" else 'ctrl'
         try:
@@ -69,7 +77,7 @@ def create_modern_selection_ui(window_titles):
     final_x = (screen_width // 2) - (width // 2)
     final_y = (screen_height // 2) - (height // 2)
 
-    app.geometry(f'{width}x{height}+{final_x}+{final_y}')
+    app.geometry("500x500")
     app.attributes('-topmost', True) # 保持在最上層
     app.mainloop()
 
