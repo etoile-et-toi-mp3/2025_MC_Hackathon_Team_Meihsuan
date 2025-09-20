@@ -1,4 +1,5 @@
 # please use python 3.9 ~ 3.12
+from operator import index
 import os
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = (
@@ -21,6 +22,12 @@ from comtypes import GUID, IUnknown, COMMETHOD, HRESULT, CoInitialize
 from comtypes.client import CreateObject
 import win32gui
 import numpy as np
+import platform
+import win32con
+import keyboard
+
+cv2.setUseOptimized(True)
+cv2.setNumThreads(0)
 
 # --- DPI awareness so screen coords are accurate on HiDPI displays ---
 try:
@@ -37,13 +44,13 @@ except Exception:
 user32 = ctypes.windll.user32
 SCREEN_W = user32.GetSystemMetrics(0)
 SCREEN_H = user32.GetSystemMetrics(1)
+hud_buffer = np.zeros((SCREEN_H, SCREEN_W, 3), dtype=np.uint8)
 
 # pyautogui.FAILSAFE = False
 # pyautogui.PAUSE = 0.02  # small delay between keys so Alt-Tab UI keeps up
 
 # variables
 gesture = None
-gesture_active = False
 gesture_start_time = 0
 last_seen_time = 0
 cancel_cooldown = 1  # seconds
@@ -55,11 +62,17 @@ alt_switch_active = False
 last_target_index = None
 num_apps_cached = 0  # number of Alt-Tab apps on current desktop
 
+thumb_straight = False
+index_straight = False
+middle_straight = False
+ring_straight = False
+pinky_straight = False
+
 VX_REL_THRESH = 3.5  # in hand-widths per second (tune 3.0 ~ 5.0)
 DIST_REL_THRESH = 0.6  # must travel at least 0.6 hand-widths within WINDOW_SEC
 
 # variables for SPEED SWIPE DETECTION
-VX_THRESH = 1
+VX_THRESH = 3
 # Pixels/sec threshold to consider a "fast" swipe.
 # With 1280x720 frames, ~1000–1600 px/s is a good starting range.
 
@@ -82,8 +95,10 @@ last_trigger_time = 0.0
 
 # Cursor trail config
 TRAIL_MAX_POINTS = 40  # how many recent points to keep
-TRAIL_FADE_SEC = 0.6  # how long a point stays visible
+TRAIL_FADE_SEC = 0.5  # how long a point stays visible
 trail = deque(maxlen=TRAIL_MAX_POINTS)
+
+SHOW_PREVIEW = True
 
 
 # helper functions
@@ -108,6 +123,16 @@ def finger_straight(mcp, pip, tip, threshold=0.9):
         return False
     cos_sim = dot / (norm1 * norm2)
     return cos_sim >= threshold
+
+
+def calculate_all_straightness(lm):
+    global index_straight, middle_straight, ring_straight, thumb_straight, pinky_straight
+    index_straight = finger_straight(lm[5], lm[6], lm[8])
+    middle_straight = finger_straight(lm[9], lm[10], lm[12])
+    ring_straight = finger_straight(lm[13], lm[14], lm[16])
+    thumb_straight = finger_straight(lm[1], lm[2], lm[4])
+    pinky_straight = finger_straight(lm[17], lm[18], lm[20])
+    return
 
 
 def is_two_gesture(lm):
@@ -141,7 +166,7 @@ def is_two_gesture(lm):
 
     im_dot = v_index[0] * v_middle[0] + v_index[1] * v_middle[1]
     mr_dot = v_middle[0] * v_ring[0] + v_middle[1] * v_ring[1]
-    rp_dot = v_ring[0] * v_pinky[0] + v_ring[1] * v_pinky[1]
+    # rp_dot = v_ring[0] * v_pinky[0] + v_ring[1] * v_pinky[1]
 
     # print(f"imdot: {im_dot:.3f}, mrdot: {mr_dot:.3f}, rpdot: {rp_dot:.3f}")
     # Threshold for "opposite" direction (dot < -0.7 is about 135 degrees apart)
@@ -155,21 +180,11 @@ def is_ok_gesture(lm, close_threshold=0.1):
     dist = ((index_tip.x - thumb_tip.x) ** 2 + (index_tip.y - thumb_tip.y) ** 2) ** 0.5
     if dist > close_threshold:
         return False
-
-    index_straight = finger_straight(lm[5], lm[6], lm[8])
-    middle_straight = finger_straight(lm[9], lm[10], lm[12])
-    ring_straight = finger_straight(lm[13], lm[14], lm[16])
-    pinky_straight = finger_straight(lm[17], lm[18], lm[20])
     return not index_straight and middle_straight and ring_straight and pinky_straight
 
 
 def is_three_gesture(lm):
     # Three: index, middle, ring are straight, thumb and pinky are NOT straight
-    index_straight = finger_straight(lm[5], lm[6], lm[8])
-    middle_straight = finger_straight(lm[9], lm[10], lm[12])
-    ring_straight = finger_straight(lm[13], lm[14], lm[16])
-    thumb_straight = finger_straight(lm[1], lm[2], lm[4])
-    pinky_straight = finger_straight(lm[17], lm[18], lm[20])
     return (
         index_straight
         and middle_straight
@@ -182,12 +197,7 @@ def is_three_gesture(lm):
 def is_four_gesture(lm):
     # Returns True if index, middle, ring, pinky are up, thumb is across palm (not up)
     # Use dot product to check straightness of each finger
-    index_straight = finger_straight(lm[5], lm[6], lm[8])
-    middle_straight = finger_straight(lm[9], lm[10], lm[12])
-    ring_straight = finger_straight(lm[13], lm[14], lm[16])
-    pinky_straight = finger_straight(lm[17], lm[18], lm[20])
     # Thumb should NOT be straight
-    thumb_straight = finger_straight(lm[1], lm[2], lm[4])
     # Four: all fingers straight, thumb not straight
     return (
         (not thumb_straight)
@@ -199,14 +209,15 @@ def is_four_gesture(lm):
 
 
 def decide_gesture(lm):
-    if is_two_gesture(lm):
-        return "two"
-    if is_ok_gesture(lm):
-        return "ok"
-    # if is_three_gesture(lm):
-    #     return "three"
+    calculate_all_straightness(lm)
     if is_four_gesture(lm):
         return "four"
+    if is_ok_gesture(lm):
+        return "ok"
+    if is_two_gesture(lm):
+        return "two"
+    # if is_three_gesture(lm):
+    #     return "three"
     return None
 
 
@@ -231,15 +242,14 @@ def fast_swipe_detector(lm, track_hist, w, h, now):
     global last_trigger_time
     # Only evaluate if we have enough recent samples
     vx, vy, dx, dy = estimate_velocity(list(track_hist))
-    hand_wide_portion = hand_area(lm)[0]
+    hand_wide_portion = max(0.1, hand_area(lm)[0])  # avoid div by zero
 
     # Check horizontal dominance and speed
-    fast_enough = abs(vx) / (hand_wide_portion * w) >= VX_THRESH and abs(
-        dy
-    ) <= HORIZ_RATIO * abs(dx)
-    diff_side = (track_hist[0][1] - track_hist[0][3]) * (
-        track_hist[-1][1] - track_hist[-1][3]
-    ) < 0
+    fast_enough = abs(vx) / (hand_wide_portion * SCREEN_W) >= VX_THRESH and abs(dy) <= HORIZ_RATIO * abs(dx)
+    diff_side = (track_hist[0][1] - track_hist[0][3]) * (track_hist[-1][1] - track_hist[-1][3]) < 0
+
+    print(f"abs vx: {abs(vx):.3f}, hand width: {hand_wide_portion * SCREEN_W:.3f}, fast_enough: {fast_enough}, firstdiff: {track_hist[0][1] - track_hist[0][3]:.3f}, lastdiff: {track_hist[-1][1] - track_hist[-1][3]:.3f}, diff_side: {diff_side}")
+
 
     if fast_enough and (now - last_trigger_time) >= TRIGGER_COOLDOWN and diff_side:
         last_trigger_time = now  # reset window so it won't retrigger from same motion
@@ -426,15 +436,49 @@ hands = mp_hands.Hands(
     static_image_mode=False,
 )
 
-cap = cv2.VideoCapture(6)
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+cap = cv2.VideoCapture(6, cv2.CAP_DSHOW)
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 960)  # 1280
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 540)  # 720
 
 # ---------- Transparent, full-screen, click-through overlay ----------
 HUD_WINDOW = "Hand HUD"
-cv2.namedWindow(HUD_WINDOW, cv2.WINDOW_NORMAL)
-cv2.setWindowProperty(HUD_WINDOW, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-cv2.setWindowProperty(HUD_WINDOW, cv2.WND_PROP_TOPMOST, 1)
+hud_hwnd = None
+
+
+def create_hud_window():
+    global hud_hwnd
+    try:
+        cv2.destroyWindow(HUD_WINDOW)
+    except Exception:
+        pass
+
+    cv2.namedWindow(HUD_WINDOW, cv2.WINDOW_NORMAL)
+    cv2.setWindowProperty(HUD_WINDOW, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+    cv2.setWindowProperty(HUD_WINDOW, cv2.WND_PROP_TOPMOST, 1)
+
+    time.sleep(0.05)  # ensure window exists
+    if platform.system() == "Windows":
+        hwnd = win32gui.FindWindow(None, HUD_WINDOW)
+        if hwnd:
+            exstyle = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
+            # Add: WS_EX_LAYERED (transparency), WS_EX_TRANSPARENT (click-through),
+            #      WS_EX_TOOLWINDOW (hide from Alt-Tab)
+            exstyle |= (
+                win32con.WS_EX_LAYERED
+                | win32con.WS_EX_TRANSPARENT
+                | win32con.WS_EX_TOOLWINDOW
+            )
+            # Clear WS_EX_APPWINDOW if it exists
+            exstyle &= ~win32con.WS_EX_APPWINDOW
+            win32gui.SetWindowLong(hwnd, win32con.GWL_EXSTYLE, exstyle)
+            # Make black fully transparent
+            win32gui.SetLayeredWindowAttributes(
+                hwnd, 0x000000, 0, win32con.LWA_COLORKEY
+            )
+            hud_hwnd = hwnd
+
+
+create_hud_window()
 
 # Make it layered + transparent (Windows only)
 try:
@@ -455,11 +499,6 @@ except Exception:
     pass  # non-Windows or missing pywin32
 
 
-def empty_overlay():
-    # Black image => fully transparent due to color key
-    return np.zeros((SCREEN_H, SCREEN_W, 3), dtype=np.uint8)
-
-
 def draw_cursor(img, x, y, color=(0, 255, 255)):
     cv2.circle(img, (x, y), 10, color, -1)
     cv2.circle(img, (x, y), 20, color, 2)
@@ -470,7 +509,7 @@ def draw_cursor(img, x, y, color=(0, 255, 255)):
 def draw_trail(hud_img, trail_points, now):
     """
     hud_img: your transparent HUD (black = transparent)
-    trail_points: deque of (x_screen, y_screen, t)
+    trail_points: deque of (x, y, t)
     now: current time.time()
     """
     if len(trail_points) < 2:
@@ -515,8 +554,38 @@ def draw_trail(hud_img, trail_points, now):
         )
 
 
-# main loop
+# Extra dots under/above the middle-tip cursor
+def draw_gesture_points(hud_img, x, y, gesture, offset_px=80):
+    """
+    Draw extra points relative to (x,y) based on gesture.
+    two  -> one above
+    ok   -> two under
+    four -> one above + two under
+    """
+    if not gesture:
+        return
 
+    offsets = [(0, 0)]
+    # Configure offsets (dx, dy)
+    if gesture == "two":
+        offsets = [(0, -offset_px)]  # one above
+    elif gesture == "ok":
+        offsets = [(0, offset_px), (0, 2 * offset_px)]  # two under
+    elif gesture == "four":
+        offsets = [
+            (0, -offset_px),
+            (0, offset_px),
+            (0, 2 * offset_px),
+        ]  # 1 above, 2 under
+
+    # Style: slightly smaller & dimmer than main cursor
+    for dx, dy in offsets:
+        cx, cy = int(x + dx), int(y + dy)
+        cv2.circle(hud_img, (cx, cy), 8, (40, 210, 255), -1, lineType=cv2.LINE_AA)
+        cv2.circle(hud_img, (cx, cy), 14, (40, 210, 255), 2, lineType=cv2.LINE_AA)
+
+
+# main loop
 while cap.isOpened():
     success, frame = cap.read()
     if not success:
@@ -528,7 +597,8 @@ while cap.isOpened():
     now = time.time()
 
     # Convert to RGB for MediaPipe
-    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    proc = cv2.resize(frame, (640, int(640 * h / w)))
+    rgb = cv2.cvtColor(proc, cv2.COLOR_BGR2RGB)
     result = hands.process(rgb)
 
     if result.multi_hand_landmarks:
@@ -547,20 +617,15 @@ while cap.isOpened():
                 frame, str(id), (cx, cy), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2
             )
 
-        # Keep a sliding window of samples (using middle finger, since it is used in all gestures)
-        x = int(hand.landmark[12].x * SCREEN_W) # we make sure these x and y can DEFINITELY reach all screen
+        # track middle tip
+        x = int(
+            hand.landmark[12].x * SCREEN_W
+        )  # we make sure these x and y can DEFINITELY reach all screen
         y = int(hand.landmark[12].y * SCREEN_H)
-        # x_screen = int(x * (SCREEN_W / w))
-        x_screen = x
-        y_screen = y
-
-        # And trim it to the desired time window (WINDOW_SEC)
-        while track_hist and (now - track_hist[0][0]) > WINDOW_SEC:
-            track_hist.popleft()
-
-        trail.append((x_screen, y_screen, now))
+        # x = int(x * (SCREEN_W / w))
 
         # Drop points older than TRAIL_FADE_SEC (time-based fade)
+        trail.append((x, y, now))
         while trail and (now - trail[0][2]) > TRAIL_FADE_SEC:
             trail.popleft()
 
@@ -576,7 +641,9 @@ while cap.isOpened():
                 # gesture has changed from one to another
                 gesture_cancel_time = now
                 ok_origin = None
-                end_alt_tab_switcher()
+                if gesture == "ok":
+                    # if previous gesture is OK, we need to end the alt-tab session
+                    end_alt_tab_switcher()
                 print(
                     f"[CANCEL] Gesture '{gesture}' cancelled at {gesture_cancel_time:.2f}"
                 )
@@ -588,32 +655,37 @@ while cap.isOpened():
                     f"[DETECT] Gesture '{gesture}' detected at {gesture_start_time:.2f}"
                 )
                 track_hist.clear()
+                trail.clear()
 
-            if not gesture_active:
+            if gesture is None:
                 # no gesture is being recorded currently, so we have the new gesture.
-                gesture_active = True
                 gesture = detected_gesture
                 gesture_start_time = now
                 print(
                     f"[DETECT] Gesture '{gesture}' detected at {gesture_start_time:.2f}"
                 )
                 track_hist.clear()
+                trail.clear()
 
             # simply update the last seen time for the gesture
-            if gesture_active and gesture == detected_gesture:
-                track_hist.append((now, x, y, hand.landmark[0].x * w))
+            if gesture is not None and gesture == detected_gesture:
+                track_hist.append((now, x, y, hand.landmark[0].x * SCREEN_W))
                 last_seen_time = now
+                # Keep a sliding window of samples (using middle finger, since it is used in all gestures)
+                # And trim it to the desired time window (WINDOW_SEC)
+                while track_hist and (now - track_hist[0][0]) > WINDOW_SEC:
+                    track_hist.popleft()
         else:
             # hand is detected but no known gesture is posed
-            if gesture_active and now - last_seen_time > cancel_cooldown:
+            if gesture is not None and now - last_seen_time > cancel_cooldown:
                 # already past the cd time -> this gesture should be killed!
                 print(
                     f"[cd] Passed the cd time! last gesture was seen {now - last_seen_time} secs ago, killing..."
                 )
-                gesture_active = False
                 gesture_cancel_time = now
                 ok_origin = None
-                end_alt_tab_switcher()
+                if gesture == "ok":
+                    end_alt_tab_switcher()
                 print(
                     f"[CANCEL] Gesture '{gesture}' cancelled at {gesture_cancel_time:.2f}"
                 )
@@ -622,12 +694,12 @@ while cap.isOpened():
                 gesture = None
     else:
         # hand is not even detected
-        if gesture_active and now - last_seen_time > cancel_cooldown:
+        if gesture is not None and now - last_seen_time > cancel_cooldown:
             # already past the cd time -> this gesture should be killed!
-            gesture_active = False
             gesture_cancel_time = now
             ok_origin = None
-            end_alt_tab_switcher()
+            if gesture == "ok":
+                end_alt_tab_switcher()
             print(
                 f"[CANCEL] Gesture '{gesture}' cancelled at {gesture_cancel_time:.2f}"
             )
@@ -635,45 +707,48 @@ while cap.isOpened():
             print()
             gesture = None
 
-    if gesture_active and len(track_hist) >= 3:
+    if gesture is not None and len(track_hist) >= 3:
         # Draw gesture name if active
         cv2.putText(
             frame, gesture, (30, 60), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 4
         )
 
-        if gesture == "two":
+        if gesture == "two" or gesture == "four":
             swipe_direction = fast_swipe_detector(hand.landmark, track_hist, w, h, now)
             if swipe_direction == 1:
-                # switch to previous page
-                pyautogui.keyDown("alt")
-                pyautogui.press("left")
-                pyautogui.keyUp("alt")
-                print("[SWIPE] FAST LEFT → hotkey fired")
+                if gesture == "two":
+                    # switch to previous page
+                    pyautogui.keyDown("alt")
+                    pyautogui.press("left")
+                    pyautogui.keyUp("alt")
+                    print("[SWIPE] FAST LEFT → hotkey fired")
+                else:
+                    # switch to previous desktop
+                    pyautogui.keyDown("ctrl")
+                    pyautogui.keyDown("win")
+                    pyautogui.press("left")
+                    pyautogui.keyUp("win")
+                    pyautogui.keyUp("ctrl")
+                    print("[SWIPE] FAST LEFT → hotkey fired")
+                    time.sleep(0.12)  # let Windows finish switching
+                    create_hud_window()  # HUD is now on the new desktop
             elif swipe_direction == -1:
-                # switch to next page
-                pyautogui.keyDown("alt")
-                pyautogui.press("right")
-                pyautogui.keyUp("alt")
-                print("[SWIPE] FAST RIGHT → hotkey fired")
-
-        elif gesture == "four":
-            swipe_direction = fast_swipe_detector(hand.landmark, track_hist, w, h, now)
-            if swipe_direction == 1:
-                # switch to previous desktop
-                pyautogui.keyDown("ctrl")
-                pyautogui.keyDown("win")
-                pyautogui.press("left")
-                pyautogui.keyUp("win")
-                pyautogui.keyUp("ctrl")
-                print("[SWIPE] FAST LEFT → hotkey fired")
-            elif swipe_direction == -1:
-                # switch to next desktop
-                pyautogui.keyDown("ctrl")
-                pyautogui.keyDown("win")
-                pyautogui.press("right")
-                pyautogui.keyUp("win")
-                pyautogui.keyUp("ctrl")
-                print("[SWIPE] FAST RIGHT → hotkey fired")
+                if gesture == "two":
+                    # switch to next page
+                    pyautogui.keyDown("alt")
+                    pyautogui.press("right")
+                    pyautogui.keyUp("alt")
+                    print("[SWIPE] FAST RIGHT → hotkey fired")
+                else:
+                    # switch to next desktop
+                    pyautogui.keyDown("ctrl")
+                    pyautogui.keyDown("win")
+                    pyautogui.press("right")
+                    pyautogui.keyUp("win")
+                    pyautogui.keyUp("ctrl")
+                    print("[SWIPE] FAST RIGHT → hotkey fired")
+                    time.sleep(0.12)  # let Windows finish switching
+                    create_hud_window()  # HUD is now on the new desktop
 
         elif gesture == "ok":
             # 1) on first OK frame, set origin and open Alt-Tab
@@ -687,7 +762,7 @@ while cap.isOpened():
             # positive dx → move right; negative → left
             ok_unitpixels = SCREEN_W / (num_apps_cached * 1.3)
             steps = round(dx / ok_unitpixels)
-            target_index = 1 + steps  # 1-indexed
+            target_index = 1 + steps
             prefer_dir = "left" if steps < 0 else ("right" if steps > 0 else None)
             update_alt_tab_selection(target_index, prefer_dir=prefer_dir)
 
@@ -704,15 +779,17 @@ while cap.isOpened():
             )
 
     # --------- Render transparent overlay with fingertip cursor ----------
-    hud = empty_overlay()
+    hud = hud_buffer
+    hud.fill(0)
     draw_trail(hud, trail, now)
     # Draw the cursor always (or only when gesture == "ok" if you prefer)
-    if gesture_active and x_screen is not None and y_screen is not None:
+    if gesture is not None and x is not None and y is not None:
         # Always draw cursor (or restrict to gesture == "ok")
-        draw_cursor(hud, x_screen, y_screen, (0, 255, 255))
+        draw_cursor(hud, x, y, (0, 255, 255))
+        draw_gesture_points(hud, x, y, gesture)
 
-        if gesture_active and gesture == "ok" and ok_origin is not None:
-            cv2.line(hud, (x_screen, 0), (x_screen, SCREEN_H), (0, 120, 255), 1)
+        if gesture is not None and gesture == "ok" and ok_origin is not None:
+            cv2.line(hud, (x, 0), (x, SCREEN_H), (0, 120, 255), 1)
             cv2.putText(
                 hud,
                 f"target:{max(1, min(num_apps_cached, int(1 + round((x - ok_origin[0]) / float(ok_unitpixels)))))}",
@@ -725,14 +802,16 @@ while cap.isOpened():
 
     # Black stays transparent; non-black shows up
     cv2.imshow(HUD_WINDOW, hud)
+    if SHOW_PREVIEW:
+        small = cv2.resize(frame, (640, 360))
+        cv2.imshow("Hand Gesture", small)
 
-    cv2.imshow("Hand Gesture", frame)
-
-    if cv2.waitKey(5) & 0xFF == 27:  # Esc to exit
+    if cv2.waitKey(5) & 0xFF == 27 or keyboard.is_pressed("q"):  # Esc to exit
         break
 
 cap.release()
 end_alt_tab_switcher()
 cv2.destroyAllWindows()
+hands.close()
 
-""" TODO: why keep moving + minimalize it! too fat"""
+""" TODO: minimalize it! too fat"""
