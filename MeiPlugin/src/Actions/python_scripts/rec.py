@@ -100,7 +100,7 @@ def _write_detected_video(log_path: Path, start_iso: str):
                 f.write("# Detected video: <none found since session start>\n")
     except Exception:
         pass
-    
+
 # ---------------- Desktop note file helpers ----------------
 def _desktop_dir():
     up = os.environ.get("USERPROFILE") or str(Path.home())
@@ -108,12 +108,19 @@ def _desktop_dir():
     return d if d.exists() else Path.home() / "Desktop"
     # return Path(r"C:\Users\seash\Videos\Captures")
 
+# def _desktop_note_path(session_id: str) -> Path:
+#     dirs = _captures_dirs()
+#     # 每個 session 一個獨立檔，避免覆蓋
+#     return dirs[0] / f"MeiRecord_Notes_{session_id}.txt"
+
 def _desktop_note_path(session_id: str) -> Path:
-    # dir = _desktop_dir()
-    dirs = _captures_dirs()
-    # 每個 session 一個獨立檔，避免覆蓋
-    # return _captures_dirs() / f"MeiRecord_Notes_{session_id}.txt"
-    return dirs[0] / f"MeiRecord_Notes_{session_id}.txt"
+    base = Path(r"C:\Users\seash\Videos\Captures")
+    notes_dir = base / "FloworkNotes"        # 新增的子資料夾
+    try:
+        notes_dir.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+    return notes_dir / f"MeiRecord_Notes_{session_id}.txt"
 
 def _init_desktop_note(session_id: str):
     """建立/覆寫桌面筆記檔，寫入標頭"""
