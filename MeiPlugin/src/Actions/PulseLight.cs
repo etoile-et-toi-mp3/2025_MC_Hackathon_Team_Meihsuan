@@ -1,377 +1,233 @@
 using System;
-using System.Drawing;
-using System.Drawing.Imaging;
-using System.IO;
 using System.Threading;
-using System.Threading.Tasks;
 using System.Windows.Media.Imaging;
 
-namespace Loupedeck.MeiPlugin
+namespace Loupedeck.TestPlugin
 {
-    // 脈衝光效命令類
     public class PulseEffectCommand : PluginDynamicCommand
     {
+        // === 私有成員變數 ===
         private Timer _pulseTimer;
-        private int _currentFrame = 0;
-        private bool _isRunning = false;
+        private int _currentFrameIndex = 0;
+        private bool _isPlaying = false;
         private readonly object _lockObject = new object();
         
-        // 脈衝參數
-        private readonly int _maxFrames = 60; // 脈衝週期總幀數
-        private readonly int _pulseSpeed = 50; // 毫秒間隔
-        
+        // 圖片資源路徑陣列 - 按照官方範例格式
+        private readonly string[] _imageResourcePaths;
+        private readonly int _intervalMs = 50;  // 50毫秒間隔
+        private readonly int _totalFrames = 119; // 總共119幀
+
+        // === 建構函式 - 按照官方範例格式 ===
         public PulseEffectCommand() 
-            : base("Pulse Effect", "創建脈衝光效", "Effects")
+            : base(displayName: "Pulse Effect", description: "自動播放脈衝動畫效果", groupName: "Animation")
         {
+            // 按照官方範例：在建構函式中初始化圖片資源路徑
+            _imageResourcePaths = new string[_totalFrames];
+            
+            // 載入所有圖片資源路徑
+            LoadImageResourcePaths();
+            
+            // 自動開始播放脈衝動畫
+            StartAutoPlay();
         }
 
-        protected override void RunCommand(string actionParameter)
+        // === 載入圖片資源路徑 - 按照官方 PluginResources.FindFile() 方式 ===
+        private void LoadImageResourcePaths()
         {
-            lock (_lockObject)
+            for (int i = 0; i < _totalFrames; i++)
             {
-                if (_isRunning)
+                try
                 {
-                    StopPulse();
+                    // 按照官方文件：使用 PluginResources.FindFile() 找到嵌入資源
+                    // 圖片檔案命名：frame_001.png, frame_002.png, ..., frame_040.png
+                    string fileName = $"{(i + 1):D3}.png";
+                    _imageResourcePaths[i] = PluginResources.FindFile(fileName);
                 }
-                else
+                catch (Exception ex)
                 {
-                    StartPulse();
+                    // 如果圖片檔案不存在，設為 null
+                    _imageResourcePaths[i] = null;
+                    System.Diagnostics.Debug.WriteLine($"找不到圖片檔案: frame_{(i + 1):D3}.png - {ex.Message}");
                 }
             }
         }
 
+        // === 自動開始播放 ===
+        private void StartAutoPlay()
+        {
+            // 延遲 500ms 後開始播放，確保系統已完全載入
+            var startTimer = new Timer((state) =>
+            {
+                lock (_lockObject)
+                {
+                    if (!_isPlaying)
+                    {
+                        StartPulse();
+                    }
+                }
+            }, null, 500, Timeout.Infinite);
+        }
+
+        // === 按鍵處理 - 按照官方範例格式 ===
+        protected override void RunCommand(string actionParameter)
+        {
+            lock (_lockObject)
+            {
+                if (_isPlaying)
+                {
+                    // 如果正在播放，則暫停
+                    PausePulse();
+                }
+                else
+                {
+                    // 如果暫停中，則繼續播放
+                    ResumePulse();
+                }
+            }
+            
+            // 按照官方文件：狀態改變時必須呼叫 ActionImageChanged
+            this.ActionImageChanged();
+        }
+
+        // === 開始脈衝動畫 ===
         private void StartPulse()
         {
-            _isRunning = true;
-            _currentFrame = 0;
+            _isPlaying = true;
+            _currentFrameIndex = 0;
             
-            _pulseTimer = new Timer(UpdatePulseFrame, null, 0, _pulseSpeed);
+            // 立即更新第一幀
+            this.ActionImageChanged();
+            
+            // 建立計時器，每50ms切換下一張圖片
+            _pulseTimer = new Timer(UpdatePulseFrame, null, _intervalMs, _intervalMs);
         }
 
-        private void StopPulse()
+        // === 暫停脈衝動畫 ===
+        private void PausePulse()
         {
-            _isRunning = false;
+            _isPlaying = false;
             _pulseTimer?.Dispose();
             _pulseTimer = null;
-            
-            // 重置到默認狀態
-            this.ActionImageChanged(string.Empty);
         }
 
+        // === 恢復脈衝動畫 ===
+        private void ResumePulse()
+        {
+            if (!_isPlaying)
+            {
+                _isPlaying = true;
+                // 從當前位置繼續播放
+                _pulseTimer = new Timer(UpdatePulseFrame, null, _intervalMs, _intervalMs);
+            }
+        }
+
+        // === 更新脈衝幀 - Timer 回調函式 ===
         private void UpdatePulseFrame(object state)
         {
-            if (!_isRunning) return;
+            if (!_isPlaying) return;
 
             lock (_lockObject)
             {
-                _currentFrame = (_currentFrame + 1) % _maxFrames;
+                // 移動到下一張圖片（循環播放）
+                _currentFrameIndex = (_currentFrameIndex + 1) % _totalFrames;
                 
-                // 通知 Loupedeck 服務更新圖像
-                this.ActionImageChanged(string.Empty);
+                // 按照官方文件：呼叫 ActionImageChanged 通知系統重繪
+                this.ActionImageChanged();
             }
         }
 
+        // === 核心顯示函式 - 按照官方 GetCommandImage 格式 ===
         protected override BitmapImage GetCommandImage(string actionParameter, PluginImageSize imageSize)
         {
-            if (!_isRunning)
+            if (_isPlaying)
             {
-                return CreateStaticImage(imageSize, 0.3f); // 靜態時30%亮度
-            }
-
-            // 計算脈衝亮度（正弦波）
-            float brightness = CalculatePulseBrightness(_currentFrame);
-            return CreatePulseImage(imageSize, brightness);
-        }
-
-        private float CalculatePulseBrightness(int frame)
-        {
-            // 使用正弦波創建平滑的脈衝效果
-            double angle = (double)frame / _maxFrames * 2 * Math.PI;
-            float pulse = (float)(Math.Sin(angle) + 1) / 2; // 0到1之間
-            
-            // 調整亮度範圍（20%-100%）
-            return 0.2f + (pulse * 0.8f);
-        }
-
-        private BitmapImage CreatePulseImage(PluginImageSize imageSize, float brightness)
-        {
-            int size = GetImageSize(imageSize);
-            
-            using (var bitmap = new Bitmap(size, size))
-            using (var graphics = Graphics.FromImage(bitmap))
-            {
-                graphics.Clear(Color.Black);
-                
-                // 創建脈衝圓形
-                var centerX = size / 2;
-                var centerY = size / 2;
-                var radius = size / 3;
-                
-                // 計算顏色（從深藍到亮青藍）
-                int blue = (int)(255 * brightness);
-                int green = (int)(200 * brightness);
-                var pulseColor = Color.FromArgb((int)(255 * brightness), 0, green, blue);
-                
-                // 創建漸層筆刷
-                using (var brush = new SolidBrush(pulseColor))
-                {
-                    graphics.FillEllipse(brush, centerX - radius, centerY - radius, radius * 2, radius * 2);
-                }
-                
-                // 添加外圈光暈效果
-                var glowRadius = (int)(radius * (1 + brightness * 0.5f));
-                var glowColor = Color.FromArgb((int)(100 * brightness), 0, green/2, blue/2);
-                using (var glowBrush = new SolidBrush(glowColor))
-                {
-                    graphics.FillEllipse(glowBrush, centerX - glowRadius, centerY - glowRadius, glowRadius * 2, glowRadius * 2);
-                }
-                
-                return BitmapToImageSource(bitmap);
-            }
-        }
-
-        private BitmapImage CreateStaticImage(PluginImageSize imageSize, float brightness)
-        {
-            int size = GetImageSize(imageSize);
-            
-            using (var bitmap = new Bitmap(size, size))
-            using (var graphics = Graphics.FromImage(bitmap))
-            {
-                graphics.Clear(Color.Black);
-                
-                var centerX = size / 2;
-                var centerY = size / 2;
-                var radius = size / 3;
-                
-                var staticColor = Color.FromArgb((int)(255 * brightness), 0, (int)(100 * brightness), (int)(180 * brightness));
-                
-                using (var brush = new SolidBrush(staticColor))
-                {
-                    graphics.FillEllipse(brush, centerX - radius, centerY - radius, radius * 2, radius * 2);
-                }
-                
-                return BitmapToImageSource(bitmap);
-            }
-        }
-
-        private int GetImageSize(PluginImageSize imageSize)
-        {
-            return imageSize switch
-            {
-                PluginImageSize.Width60 => 60,
-                PluginImageSize.Width80 => 80,
-                PluginImageSize.Width90 => 90,
-                _ => 80
-            };
-        }
-
-        private BitmapImage BitmapToImageSource(Bitmap bitmap)
-        {
-            using (var stream = new MemoryStream())
-            {
-                bitmap.Save(stream, ImageFormat.Png);
-                stream.Position = 0;
-                
-                var bitmapImage = new BitmapImage();
-                bitmapImage.BeginInit();
-                bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
-                bitmapImage.StreamSource = stream;
-                bitmapImage.EndInit();
-                bitmapImage.Freeze();
-                
-                return bitmapImage;
-            }
-        }
-
-        protected override void Dispose(bool disposing)
-        {
-            if (disposing)
-            {
-                StopPulse();
-            }
-            base.Dispose(disposing);
-        }
-    }
-
-    // 多彩脈衝效果命令
-    public class RainbowPulseCommand : PluginDynamicCommand
-    {
-        private Timer _timer;
-        private int _hueShift = 0;
-        private bool _isActive = false;
-        
-        public RainbowPulseCommand() 
-            : base("Rainbow Pulse", "彩虹脈衝效果", "Effects")
-        {
-        }
-
-        protected override void RunCommand(string actionParameter)
-        {
-            if (_isActive)
-            {
-                StopRainbowPulse();
+                // 播放模式：顯示當前脈衝幀
+                return LoadCurrentPulseFrame();
             }
             else
             {
-                StartRainbowPulse();
+                // 暫停模式：顯示暫停狀態
+                return CreatePausedImage(imageSize);
             }
         }
 
-        private void StartRainbowPulse()
+        // === 載入當前脈衝幀 - 按照官方 PluginResources.ReadImage 方式 ===
+        private BitmapImage LoadCurrentPulseFrame()
         {
-            _isActive = true;
-            _timer = new Timer(UpdateRainbow, null, 0, 100);
-        }
-
-        private void StopRainbowPulse()
-        {
-            _isActive = false;
-            _timer?.Dispose();
-            _timer = null;
-            this.ActionImageChanged(string.Empty);
-        }
-
-        private void UpdateRainbow(object state)
-        {
-            if (!_isActive) return;
-            
-            _hueShift = (_hueShift + 10) % 360;
-            this.ActionImageChanged(string.Empty);
-        }
-
-        protected override BitmapImage GetCommandImage(string actionParameter, PluginImageSize imageSize)
-        {
-            int size = GetImageSize(imageSize);
-            
-            using (var bitmap = new Bitmap(size, size))
-            using (var graphics = Graphics.FromImage(bitmap))
+            try
             {
-                graphics.Clear(Color.Black);
+                string resourcePath = _imageResourcePaths[_currentFrameIndex];
                 
-                if (_isActive)
+                if (resourcePath != null)
                 {
-                    // 創建彩虹脈衝
-                    var centerX = size / 2;
-                    var centerY = size / 2;
-                    var maxRadius = size / 2;
-                    
-                    for (int ring = 0; ring < 5; ring++)
-                    {
-                        var radius = maxRadius - (ring * 8);
-                        if (radius <= 0) continue;
-                        
-                        var hue = (_hueShift + (ring * 60)) % 360;
-                        var color = HslToRgb(hue, 100, 50);
-                        
-                        using (var brush = new SolidBrush(Color.FromArgb(150, color)))
-                        {
-                            graphics.FillEllipse(brush, centerX - radius, centerY - radius, radius * 2, radius * 2);
-                        }
-                    }
+                    // 按照官方文件：使用 PluginResources.ReadImage 載入嵌入的圖片
+                    return PluginResources.ReadImage(resourcePath);
                 }
                 else
                 {
-                    // 靜態彩虹圓
-                    var centerX = size / 2;
-                    var centerY = size / 2;
-                    var radius = size / 3;
-                    
-                    using (var brush = new SolidBrush(Color.FromArgb(100, 128, 0, 255)))
-                    {
-                        graphics.FillEllipse(brush, centerX - radius, centerY - radius, radius * 2, radius * 2);
-                    }
+                    // 圖片檔案不存在，使用程式生成的預設脈衝圖片
+                    return CreateDefaultPulseImage(_currentFrameIndex);
                 }
-                
-                return BitmapToImageSource(bitmap);
+            }
+            catch (Exception ex)
+            {
+                // 載入失敗，顯示錯誤圖片
+                System.Diagnostics.Debug.WriteLine($"載入脈衝圖片失敗: {ex.Message}");
+                return CreateErrorImage(_currentFrameIndex);
             }
         }
 
-        private Color HslToRgb(int hue, int saturation, int lightness)
+        // === 創建暫停狀態圖片 - 按照官方 BitmapBuilder 用法 ===
+        private BitmapImage CreatePausedImage(PluginImageSize imageSize)
         {
-            double h = hue / 360.0;
-            double s = saturation / 100.0;
-            double l = lightness / 100.0;
-            
-            double r, g, b;
-            
-            if (s == 0)
+            using (var bitmapBuilder = new BitmapBuilder(imageSize))
             {
-                r = g = b = l;
-            }
-            else
-            {
-                Func<double, double, double, double> hue2rgb = (p, q, t) =>
-                {
-                    if (t < 0) t += 1;
-                    if (t > 1) t -= 1;
-                    if (t < 1.0/6) return p + (q - p) * 6 * t;
-                    if (t < 1.0/2) return q;
-                    if (t < 2.0/3) return p + (q - p) * (2.0/3 - t) * 6;
-                    return p;
-                };
+                // 按照官方文件：DrawText 不使用可選參數
+                bitmapBuilder.DrawText($"PAUSED\nFrame {_currentFrameIndex + 1}");
                 
-                var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-                var p = 2 * l - q;
-                r = hue2rgb(p, q, h + 1.0/3);
-                g = hue2rgb(p, q, h);
-                b = hue2rgb(p, q, h - 1.0/3);
+                return bitmapBuilder.ToImage();
             }
-            
-            return Color.FromArgb((int)(r * 255), (int)(g * 255), (int)(b * 255));
         }
 
-        private int GetImageSize(PluginImageSize imageSize)
+        // === 創建預設脈衝圖片（當嵌入圖片不存在時）===
+        private BitmapImage CreateDefaultPulseImage(int frameIndex)
         {
-            return imageSize switch
+            using (var bitmapBuilder = new BitmapBuilder(PluginImageSize.Width80))
             {
-                PluginImageSize.Width60 => 60,
-                PluginImageSize.Width80 => 80,
-                PluginImageSize.Width90 => 90,
-                _ => 80
-            };
-        }
-
-        private BitmapImage BitmapToImageSource(Bitmap bitmap)
-        {
-            using (var stream = new MemoryStream())
-            {
-                bitmap.Save(stream, ImageFormat.Png);
-                stream.Position = 0;
+                // 計算脈衝強度（0-1之間的正弦波）
+                double pulseIntensity = (Math.Sin((double)frameIndex / _totalFrames * 2 * Math.PI) + 1) / 2;
                 
-                var bitmapImage = new BitmapImage();
-                bitmapImage.BeginInit();
-                bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
-                bitmapImage.StreamSource = stream;
-                bitmapImage.EndInit();
-                bitmapImage.Freeze();
+                // 調整為 20%-100% 的強度範圍
+                pulseIntensity = 0.2 + (pulseIntensity * 0.8);
                 
-                return bitmapImage;
+                // 顯示脈衝效果文字和強度
+                string intensityBar = new string('█', (int)(pulseIntensity * 10));
+                bitmapBuilder.DrawText($"PULSE\n{intensityBar}\n{frameIndex + 1}/40");
+                
+                return bitmapBuilder.ToImage();
             }
         }
 
+        // === 創建錯誤圖片 ===
+        private BitmapImage CreateErrorImage(int frameIndex)
+        {
+            using (var bitmapBuilder = new BitmapBuilder(PluginImageSize.Width80))
+            {
+                bitmapBuilder.DrawText($"ERROR\nFrame {frameIndex + 1}\nLoad Failed");
+                
+                return bitmapBuilder.ToImage();
+            }
+        }
+
+        // === 清理資源 ===
         protected override void Dispose(bool disposing)
         {
             if (disposing)
             {
-                StopRainbowPulse();
+                // 停止計時器並清理資源
+                PausePulse();
             }
             base.Dispose(disposing);
-        }
-    }
-
-    // 主插件類
-    public class PulseEffectPlugin : Plugin
-    {
-        public override void Load()
-        {
-            // 註冊脈衝效果命令
-            this.AddCommand(new PulseEffectCommand());
-            this.AddCommand(new RainbowPulseCommand());
-        }
-
-        public override void Unload()
-        {
-            // 清理資源
         }
     }
 }
