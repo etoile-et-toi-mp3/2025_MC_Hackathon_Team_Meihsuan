@@ -22,7 +22,7 @@ def switch_and_paste(window_title):
                 # 在 activate() 後加入這段
         win_box = window.box  # x, y, width, height
         click_x = win_box.left + win_box.width // 2
-        click_y = win_box.top + int(win_box.height * 0.95)  # 下半部
+        click_y = win_box.top + int(win_box.height * 0.85)  # 下半部
 
         pyautogui.click(click_x, click_y)
         pyautogui.sleep(0.2)
