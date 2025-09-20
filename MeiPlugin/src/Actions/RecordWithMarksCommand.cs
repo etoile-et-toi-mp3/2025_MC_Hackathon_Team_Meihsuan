@@ -12,30 +12,32 @@ namespace Loupedeck.MeiPlugin
         private static readonly TimeSpan DoubleTapWindow = TimeSpan.FromMilliseconds(600);
 
         private bool _recording;
-        private DateTime _sessionStartUtc;
         private int _markCount;
 
-        // 延後判斷用
         private readonly Timer _tapTimer;
         private bool _tapArmed;
 
-        private readonly Timer _uiTick = new Timer(1000) { AutoReset = true };
+        // state watching from Python
+        private FileSystemWatcher _stateWatcher;
+        private Timer _statePoll;
+        private readonly string _baseDir;
+        private readonly string _statePath;
 
         public RecordWithMarksCommand()
             : base("Start Recording", "Start/Mark/Stop via Python helper (Win+Alt+R)", "Commands")
         {
-            _uiTick.Elapsed += (_, __) => this.ActionImageChanged();
-
             _tapTimer = new Timer(DoubleTapWindow.TotalMilliseconds) { AutoReset = false };
             _tapTimer.Elapsed += (_, __) =>
             {
-                // 時間窗到期仍只有一次按壓 → 當作單擊 => Mark()
                 if (_recording && _tapArmed)
                 {
                     _tapArmed = false;
                     Mark();
                 }
             };
+
+            _baseDir = ResolveBaseDir();
+            _statePath = Path.Combine(_baseDir, "session_state.json");
         }
 
         protected override void RunCommand(String actionParameter)
@@ -46,7 +48,7 @@ namespace Loupedeck.MeiPlugin
                 return;
             }
 
-            // 錄製中：第一次按 → 武裝雙擊窗；第二次按（窗內）→ Stop()
+            // 錄製中：單擊 = Mark；雙擊 = Stop
             if (!_tapArmed)
             {
                 _tapArmed = true;
@@ -65,10 +67,7 @@ namespace Loupedeck.MeiPlugin
         protected override String GetCommandDisplayName(String actionParameter, PluginImageSize imageSize)
         {
             if (_recording)
-            {
-                var elapsed = DateTime.UtcNow - _sessionStartUtc;
-                return $"REC ●  {Fmt(elapsed)}{Environment.NewLine}Marks: {_markCount}";
-            }
+                return $"REC● Marks: {_markCount}";
             return "Start Recording";
         }
 
@@ -76,7 +75,6 @@ namespace Loupedeck.MeiPlugin
 
         private void Start()
         {
-            // 清乾淨雙擊狀態
             _tapArmed = false;
             _tapTimer.Stop();
 
@@ -89,12 +87,11 @@ namespace Loupedeck.MeiPlugin
 
             _recording = true;
             _markCount = 0;
-            _sessionStartUtc = DateTime.UtcNow;
 
             if (!string.IsNullOrWhiteSpace(so))
                 PluginLog.Info($"start: {Trim(so)}");
 
-            _uiTick.Start();
+            StartStateWatchers();
             this.ActionImageChanged();
         }
 
@@ -155,15 +152,11 @@ namespace Loupedeck.MeiPlugin
             _tapTimer.Stop();
 
             _recording = false;
-            _uiTick.Stop();
+            StopStateWatchers();
             this.ActionImageChanged();
         }
 
         // --- Helpers ---
-
-        private static string Fmt(TimeSpan t)
-            => (t.TotalHours >= 1) ? $"{(int)t.TotalHours:00}:{t.Minutes:00}:{t.Seconds:00}"
-                                   : $"{t.Minutes:00}:{t.Seconds:00}";
 
         private static string Trim(string s) => s?.Trim() ?? "";
 
@@ -188,12 +181,65 @@ namespace Loupedeck.MeiPlugin
             return (p.ExitCode, so, se);
         }
 
+        // -------- state watch (stop signal from Python) --------
+
+        private void StartStateWatchers()
+        {
+            try { Directory.CreateDirectory(_baseDir); } catch { }
+
+            _stateWatcher?.Dispose();
+            _stateWatcher = new FileSystemWatcher(_baseDir)
+            {
+                Filter = "session_state.json",
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size
+            };
+            _stateWatcher.Deleted += (_, __) => OnStateGone("deleted");
+            _stateWatcher.Renamed += (_, __) => OnStateGone("renamed");
+            _stateWatcher.Changed += (_, __) => { /* 可加：偵測 recording=false 的版本 */ };
+            _stateWatcher.EnableRaisingEvents = true;
+
+            _statePoll?.Stop();
+            _statePoll = new Timer(800) { AutoReset = true };
+            _statePoll.Elapsed += (_, __) =>
+            {
+                if (!_recording) return;
+                if (!File.Exists(_statePath))
+                    OnStateGone("missing_poll");
+            };
+            _statePoll.Start();
+        }
+
+        private void StopStateWatchers()
+        {
+            try { _stateWatcher?.Dispose(); } catch { }
+            _stateWatcher = null;
+            try { _statePoll?.Stop(); _statePoll?.Dispose(); } catch { }
+            _statePoll = null;
+        }
+
+        private void OnStateGone(string reason)
+        {
+            PluginLog.Info($"state gone: {reason}");
+            this.ForceStopUi();
+        }
+
+        private static string ResolveBaseDir()
+        {
+            // 對齊 rec.py:
+            // BASE = MEI_LOG_DIR or %USERPROFILE%\Documents\Loupedeck\MeiPlugin\ScreenRecordMarks
+            var env = Environment.GetEnvironmentVariable("MEI_LOG_DIR");
+            if (!string.IsNullOrWhiteSpace(env))
+                return env;
+
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            return Path.Combine(home, "Documents", "Loupedeck", "MeiPlugin", "ScreenRecordMarks");
+        }
+
         public void Dispose()
         {
             _tapTimer?.Stop();
             _tapTimer?.Dispose();
-            _uiTick?.Stop();
-            _uiTick?.Dispose();
+            StopStateWatchers();
         }
     }
 }
