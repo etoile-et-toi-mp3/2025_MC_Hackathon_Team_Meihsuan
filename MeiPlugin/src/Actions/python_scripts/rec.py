@@ -47,6 +47,45 @@ def _scan_key(vk, up=False):
     ev = INPUT(); ev.type = 1
     ev.U.ki = KEYBDINPUT(0, sc, KEYEVENTF_SCANCODE | (KEYEVENTF_KEYUP if up else 0), 0, None)
     SendInput(1, ctypes.byref(ev), ctypes.sizeof(ev))
+
+
+# ---------------- Desktop note file helpers ----------------
+def _desktop_dir():
+    up = os.environ.get("USERPROFILE") or str(Path.home())
+    d = Path(up) / "Desktop"
+    return d if d.exists() else Path.home() / "Desktop"
+
+def _desktop_note_path(session_id: str) -> Path:
+    # 每個 session 一個獨立檔，避免覆蓋
+    return _desktop_dir() / f"MeiRecord_Notes_{session_id}.txt"
+
+def _init_desktop_note(session_id: str):
+    """建立/覆寫桌面筆記檔，寫入標頭"""
+    p = _desktop_note_path(session_id)
+    try:
+        p.write_text("mark: [elapsed] — note\n", encoding="utf-8")
+    except Exception:
+        pass
+
+def _append_desktop_note(session_id: str, elapsed_str: str, note_text: str):
+    """
+    將一條筆記追加到桌面檔。
+    若 note 本身已是 'MM:SS — ...' 或 'HH:MM:SS — ...' 形態，直接用；
+    否則用 elapsed 補齊成 'MM:SS — note'。
+    """
+    p = _desktop_note_path(session_id)
+    try:
+        line = note_text.strip()
+        # 符合 'MM:SS — ...' 或 'HH:MM:SS — ...' 就直接用
+        import re
+        if not re.match(r"^\d{2}:\d{2}(:\d{2})?\s+—\s+.+", line):
+            line = f"{elapsed_str} — {line}"
+        with open(p, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except Exception:
+        pass
+
+
 # ---------------- Window & file-based recording detection (STRICT) ----------------
 import ctypes.wintypes as wt
 
@@ -505,7 +544,7 @@ def cmd_start():
     log_path   = DOCS / f"{session_id}_session.txt"
     start_iso  = now_utc().isoformat(timespec="seconds")
     write_state({"session_id": session_id, "log": str(log_path), "start_utc": start_iso})
-
+    _init_desktop_note(session_id)
     try:
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(f"# Likely video folder: {Path.home() / 'Videos' / 'Captures'}\n")
@@ -555,6 +594,12 @@ def cmd_mark():
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(line + "\n")
         print(line, flush=True)
+        # 也寫到桌面筆記檔
+        try:
+            _append_desktop_note(st["session_id"], elapsed_str, note)
+        except Exception:
+            pass
+
 
     if action in ("save_stop", "stop"):
         try: FLAG.touch()
