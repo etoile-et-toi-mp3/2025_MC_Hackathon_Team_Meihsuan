@@ -1,4 +1,5 @@
 # please use python 3.9 ~ 3.12
+from operator import index
 import os
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = (
@@ -120,8 +121,8 @@ def finger_straight(mcp, pip, tip, threshold=0.9):
     v1 = [pip.x - mcp.x, pip.y - mcp.y]
     v2 = [tip.x - pip.x, tip.y - pip.y]
     dot = v1[0] * v2[0] + v1[1] * v2[1]
-    norm1 = (v1[0] * 2 + v1[1] * 2) ** 0.5
-    norm2 = (v2[0] * 2 + v2[1] * 2) ** 0.5
+    norm1 = (v1[0] ** 2 + v1[1] ** 2) ** 0.5
+    norm2 = (v2[0] ** 2 + v2[1] ** 2) ** 0.5
     if norm1 == 0 or norm2 == 0:
         return False
     cos_sim = dot / (norm1 * norm2)
@@ -152,12 +153,12 @@ def is_two_gesture(lm):
     v_ring = [ring_tip.x - ring_pip.x, ring_tip.y - ring_pip.y]
     v_pinky = [pinky_tip.x - pinky_pip.x, pinky_tip.y - pinky_pip.y]
 
-    # sum_of_ring_pinky_vectors_length = (v_ring[0] * 2 + v_ring[1] * 2) * 0.5 + (v_pinky[0] * 2 + v_pinky[0] * 2) * 0.5
+    # sum_of_ring_pinky_vectors_length = (v_ring[0] ** 2 + v_ring[1] ** 2) ** 0.5 + (v_pinky[0] ** 2 + v_pinky[0] ** 2) ** 0.5
     # print(f"this is sum: {sum_of_ring_pinky_vectors_length}")
 
     # Normalize vectors
     def normalize(v):
-        norm = (v[0] * 2 + v[1] * 2) ** 0.5
+        norm = (v[0] ** 2 + v[1] ** 2) ** 0.5
         if norm == 0:
             return [0, 0]
         return [v[0] / norm, v[1] / norm]
@@ -180,7 +181,7 @@ def is_ok_gesture(lm, close_threshold=0.1):
     # OK: index tip and thumb tip are close, middle, ring, and pinky are straight
     index_tip = lm[8]
     thumb_tip = lm[4]
-    dist = ((index_tip.x - thumb_tip.x) * 2 + (index_tip.y - thumb_tip.y) * 2) ** 0.5
+    dist = ((index_tip.x - thumb_tip.x) ** 2 + (index_tip.y - thumb_tip.y) ** 2) ** 0.5
     if dist > close_threshold:
         return False
     return not index_straight and middle_straight and ring_straight and pinky_straight
@@ -225,12 +226,12 @@ def is_seven_gesture(lm):
     v_ring = [ring_tip.x - ring_pip.x, ring_tip.y - ring_pip.y]
     v_pinky = [pinky_tip.x - pinky_pip.x, pinky_tip.y - pinky_pip.y]
 
-    # sum_of_ring_pinky_vectors_length = (v_ring[0] * 2 + v_ring[1] * 2) * 0.5 + (v_pinky[0] * 2 + v_pinky[0] * 2) * 0.5
+    # sum_of_ring_pinky_vectors_length = (v_ring[0] ** 2 + v_ring[1] ** 2) ** 0.5 + (v_pinky[0] ** 2 + v_pinky[0] ** 2) ** 0.5
     # print(f"this is sum: {sum_of_ring_pinky_vectors_length}")
 
     # Normalize vectors
     def normalize(v):
-        norm = (v[0] * 2 + v[1] * 2) ** 0.5
+        norm = (v[0] ** 2 + v[1] ** 2) ** 0.5
         if norm == 0:
             return [0, 0]
         return [v[0] / norm, v[1] / norm]
@@ -352,8 +353,8 @@ def appears_in_alt_tab(hwnd):
 
 # ---- IVirtualDesktopManager for "current desktop only" ----
 class IVirtualDesktopManager(IUnknown):
-    iid = GUID("{A5CD92FF-29BE-454C-8D04-D82879FB3F1B}")
-    methods = [
+    _iid_ = GUID("{A5CD92FF-29BE-454C-8D04-D82879FB3F1B}")
+    _methods_ = [
         COMMETHOD(
             [],
             HRESULT,
