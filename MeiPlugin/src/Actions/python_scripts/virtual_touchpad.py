@@ -1,5 +1,4 @@
 # please use python 3.9 ~ 3.12
-from operator import index
 import os
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = (
@@ -53,7 +52,7 @@ hud_buffer = np.zeros((SCREEN_H, SCREEN_W, 3), dtype=np.uint8)
 gesture = None
 gesture_start_time = 0
 last_seen_time = 0
-cancel_cooldown = 1  # seconds
+cancel_cooldown = 0.6  # seconds
 gesture_cancel_time = 0
 detected_gesture = None
 
@@ -74,9 +73,9 @@ num_apps_cached = 0  # number of Alt-Tab apps on current desktop
 
 # variables for SPEED SWIPE DETECTION
 VX_THRESH = 2.5
-HORIZ_RATIO = 0.7 # How "horizontal" it must be: |vy| <= HORIZ_RATIO * |vx|
-WINDOW_SEC = 0.85 # Time window (seconds) to estimate velocity over recent samples
-TRIGGER_COOLDOWN = 2 # Debounce so one swipe only triggers one hotkey
+HORIZ_RATIO = 0.7  # How "horizontal" it must be: |vy| <= HORIZ_RATIO * |vx|
+WINDOW_SEC = 0.85  # Time window (seconds) to estimate velocity over recent samples
+TRIGGER_COOLDOWN = 2  # Debounce so one swipe only triggers one hotkey
 
 # Keep recent (t, x, y) samples for velocity estimation
 track_hist = deque()
@@ -91,7 +90,7 @@ trail = deque(maxlen=TRAIL_MAX_POINTS)
 zoom_origin = None
 zoom_unitpixel = None
 
-SHOW_PREVIEW = True
+SHOW_PREVIEW = False
 
 
 # helper functions
@@ -121,8 +120,8 @@ def finger_straight(mcp, pip, tip, threshold=0.9):
     v1 = [pip.x - mcp.x, pip.y - mcp.y]
     v2 = [tip.x - pip.x, tip.y - pip.y]
     dot = v1[0] * v2[0] + v1[1] * v2[1]
-    norm1 = (v1[0] ** 2 + v1[1] ** 2) ** 0.5
-    norm2 = (v2[0] ** 2 + v2[1] ** 2) ** 0.5
+    norm1 = (v1[0] * 2 + v1[1] * 2) ** 0.5
+    norm2 = (v2[0] * 2 + v2[1] * 2) ** 0.5
     if norm1 == 0 or norm2 == 0:
         return False
     cos_sim = dot / (norm1 * norm2)
@@ -153,12 +152,12 @@ def is_two_gesture(lm):
     v_ring = [ring_tip.x - ring_pip.x, ring_tip.y - ring_pip.y]
     v_pinky = [pinky_tip.x - pinky_pip.x, pinky_tip.y - pinky_pip.y]
 
-    # sum_of_ring_pinky_vectors_length = (v_ring[0] ** 2 + v_ring[1] ** 2) ** 0.5 + (v_pinky[0] ** 2 + v_pinky[0] ** 2) ** 0.5
+    # sum_of_ring_pinky_vectors_length = (v_ring[0] * 2 + v_ring[1] * 2) * 0.5 + (v_pinky[0] * 2 + v_pinky[0] * 2) * 0.5
     # print(f"this is sum: {sum_of_ring_pinky_vectors_length}")
 
     # Normalize vectors
     def normalize(v):
-        norm = (v[0] ** 2 + v[1] ** 2) ** 0.5
+        norm = (v[0] * 2 + v[1] * 2) ** 0.5
         if norm == 0:
             return [0, 0]
         return [v[0] / norm, v[1] / norm]
@@ -181,7 +180,7 @@ def is_ok_gesture(lm, close_threshold=0.1):
     # OK: index tip and thumb tip are close, middle, ring, and pinky are straight
     index_tip = lm[8]
     thumb_tip = lm[4]
-    dist = ((index_tip.x - thumb_tip.x) ** 2 + (index_tip.y - thumb_tip.y) ** 2) ** 0.5
+    dist = ((index_tip.x - thumb_tip.x) * 2 + (index_tip.y - thumb_tip.y) * 2) ** 0.5
     if dist > close_threshold:
         return False
     return not index_straight and middle_straight and ring_straight and pinky_straight
@@ -211,14 +210,44 @@ def is_four_gesture(lm):
         and pinky_straight
     )
 
+
 def is_seven_gesture(lm):
-    return (
-        thumb_straight
-        and index_straight
-        and (not middle_straight)
-        and (not ring_straight)
-        and (not pinky_straight)
-    )
+    # Returns True if index and middle are pointing in the opposite direction of ring and pinky
+    # by comparing their pip-to-tip vectors using dot product
+    index_pip, index_tip = lm[6], lm[8]
+    middle_pip, middle_tip = lm[10], lm[12]
+    ring_pip, ring_tip = lm[14], lm[16]
+    pinky_pip, pinky_tip = lm[18], lm[20]
+
+    # Get pip-to-tip vectors
+    v_index = [index_tip.x - index_pip.x, index_tip.y - index_pip.y]
+    v_middle = [middle_tip.x - middle_pip.x, middle_tip.y - middle_pip.y]
+    v_ring = [ring_tip.x - ring_pip.x, ring_tip.y - ring_pip.y]
+    v_pinky = [pinky_tip.x - pinky_pip.x, pinky_tip.y - pinky_pip.y]
+
+    # sum_of_ring_pinky_vectors_length = (v_ring[0] * 2 + v_ring[1] * 2) * 0.5 + (v_pinky[0] * 2 + v_pinky[0] * 2) * 0.5
+    # print(f"this is sum: {sum_of_ring_pinky_vectors_length}")
+
+    # Normalize vectors
+    def normalize(v):
+        norm = (v[0] * 2 + v[1] * 2) ** 0.5
+        if norm == 0:
+            return [0, 0]
+        return [v[0] / norm, v[1] / norm]
+
+    v_index = normalize(v_index)
+    v_middle = normalize(v_middle)
+    v_ring = normalize(v_ring)
+    v_pinky = normalize(v_pinky)
+
+    im_dot = v_index[0] * v_middle[0] + v_index[1] * v_middle[1]
+    mp_dot = v_middle[0] * v_pinky[0] + v_middle[1] * v_pinky[1]
+    # rp_dot = v_ring[0] * v_pinky[0] + v_ring[1] * v_pinky[1]
+
+    # print(f"imdot: {im_dot:.3f}, mpdot: {mp_dot:.3f}, thumb: {thumb_straight}, index: {index_straight}")
+    # Threshold for "opposite" direction (dot < -0.7 is about 135 degrees apart)
+    return im_dot < 0.6 and mp_dot > 0.5 and thumb_straight and index_straight
+
 
 def decide_gesture(lm):
     calculate_all_straightness(lm)
@@ -259,11 +288,14 @@ def fast_swipe_detector(lm, track_hist, w, h, now):
     hand_wide_portion = max(0.1, palm_area(lm)[0])  # avoid div by zero
 
     # Check horizontal dominance and speed
-    fast_enough = abs(vx) / (hand_wide_portion * SCREEN_W) >= VX_THRESH and abs(dy) <= HORIZ_RATIO * abs(dx)
-    diff_side = (track_hist[0][1] - track_hist[0][3]) * (track_hist[-1][1] - track_hist[-1][3]) < 0
+    fast_enough = abs(vx) / (hand_wide_portion * SCREEN_W) >= VX_THRESH and abs(
+        dy
+    ) <= HORIZ_RATIO * abs(dx)
+    diff_side = (track_hist[0][1] - track_hist[0][3]) * (
+        track_hist[-1][1] - track_hist[-1][3]
+    ) < 0
 
-    print(f"abs vx: {abs(vx):.3f}, hand width: {hand_wide_portion * SCREEN_W:.3f}, absdy: {abs(dy):.3f}, horiz_ratio x abs(dx): {HORIZ_RATIO * abs(dx):.3f}, fast_enough: {fast_enough}, firstdiff: {track_hist[0][1] - track_hist[0][3]:.3f}, lastdiff: {track_hist[-1][1] - track_hist[-1][3]:.3f}, diff_side: {diff_side}")
-
+    # print(f"abs vx: {abs(vx):.3f}, hand width: {hand_wide_portion * SCREEN_W:.3f}, absdy: {abs(dy):.3f}, horiz_ratio x abs(dx): {HORIZ_RATIO * abs(dx):.3f}, fast_enough: {fast_enough}, firstdiff: {track_hist[0][1] - track_hist[0][3]:.3f}, lastdiff: {track_hist[-1][1] - track_hist[-1][3]:.3f}, diff_side: {diff_side}")
 
     if fast_enough and (now - last_trigger_time) >= TRIGGER_COOLDOWN and diff_side:
         last_trigger_time = now  # reset window so it won't retrigger from same motion
@@ -320,8 +352,8 @@ def appears_in_alt_tab(hwnd):
 
 # ---- IVirtualDesktopManager for "current desktop only" ----
 class IVirtualDesktopManager(IUnknown):
-    _iid_ = GUID("{A5CD92FF-29BE-454C-8D04-D82879FB3F1B}")
-    _methods_ = [
+    iid = GUID("{A5CD92FF-29BE-454C-8D04-D82879FB3F1B}")
+    methods = [
         COMMETHOD(
             [],
             HRESULT,
@@ -387,22 +419,20 @@ def start_alt_tab_switcher():
     print(f"[OK] Alt-Tab shown (apps={num_apps_cached})")
 
 
-def update_alt_tab_selection(target_index, prefer_dir=None):
+def update_alt_tab_selection(steps, prefer_dir=None):
     """
     Move selection on a circular Alt-Tab ring of size num_apps_cached.
     1-indexed positions. prefer_dir: 'left' or 'right' to resolve direction.
     """
-    global last_target_index
+    global last_target_index, ok_origin
     if not alt_switch_active or num_apps_cached <= 1:
         return
 
     N = num_apps_cached
     # wrap target into 1..N
-    target = ((int(target_index) - 1) % N) + 1
+    target = ((int(last_target_index + steps) - 1) % N) + 1
 
     cur = last_target_index or 1  # current selection (1..N)
-    if target == cur:
-        return
 
     # distances on the ring
     forward = (target - cur) % N  # steps going right
@@ -411,21 +441,22 @@ def update_alt_tab_selection(target_index, prefer_dir=None):
     # choose direction
     if prefer_dir == "left":
         key = "left"
-        steps = backward if backward != 0 else 0
+        times = backward if backward != 0 else 0
     elif prefer_dir == "right":
         key = "right"
-        steps = forward if forward != 0 else 0
+        times = forward if forward != 0 else 0
     else:
         # shortest path by default
         if forward <= backward:
-            key, steps = "right", forward
+            key, times = "right", forward
         else:
-            key, steps = "left", backward
+            key, times = "left", backward
 
-    for _ in range(steps):
+    for _ in range(times):
         pyautogui.press(key)
 
     last_target_index = target
+    ok_origin[0] += steps * ok_unitpixels
 
 
 def end_alt_tab_switcher():
@@ -450,9 +481,9 @@ hands = mp_hands.Hands(
     static_image_mode=False,
 )
 
-cap = cv2.VideoCapture(6, cv2.CAP_DSHOW)
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, 960)  # 1280
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 540)  # 720
+cap = cv2.VideoCapture(5, cv2.CAP_DSHOW)
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)  # 1280
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)  # 720
 
 # ---------- Transparent, full-screen, click-through overlay ----------
 HUD_WINDOW = "Hand HUD"
@@ -569,7 +600,7 @@ def draw_trail(hud_img, trail_points, now):
 
 
 # Extra dots under/above the middle-tip cursor
-def draw_gesture_points(hud_img, x, y, gesture, offset_px=80):
+def draw_gesture_points(hud_img, x, y, gesture, offset_px=SCREEN_H/10):
     """
     Draw extra points relative to (x,y) based on gesture.
     two  -> one above
@@ -592,7 +623,10 @@ def draw_gesture_points(hud_img, x, y, gesture, offset_px=80):
             (0, 2 * offset_px),
         ]  # 1 above, 2 under
     elif gesture == "seven":
-        offsets = [(offset_px, -(offset_px//3)), ((offset_px//2), -(offset_px//3))]
+        offsets = [
+            (offset_px * 2, -(offset_px)),
+            (-(offset_px), -(offset_px)),
+        ]
 
     # Style: slightly smaller & dimmer than main cursor
     for dx, dy in offsets:
@@ -613,8 +647,7 @@ while cap.isOpened():
     now = time.time()
 
     # Convert to RGB for MediaPipe
-    proc = cv2.resize(frame, (640, int(640 * h / w)))
-    rgb = cv2.cvtColor(proc, cv2.COLOR_BGR2RGB)
+    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     result = hands.process(rgb)
 
     if result.multi_hand_landmarks:
@@ -624,14 +657,12 @@ while cap.isOpened():
         )
 
         # Draw landmarks and connections for the biggest hand
-        mp_draw.draw_landmarks(frame, hand, mp_hands.HAND_CONNECTIONS)
+        if SHOW_PREVIEW:
+            mp_draw.draw_landmarks(frame, hand, mp_hands.HAND_CONNECTIONS)
 
         # Draw landmark indices
-        for id, lm in enumerate(hand.landmark):
-            cx, cy = int(lm.x * w), int(lm.y * h)
-            cv2.putText(
-                frame, str(id), (cx, cy), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2
-            )
+        # for id, lm in enumerate(hand.landmark):
+        # cv2.putText(frame, str(id), (int(lm.x * w), int(lm.y * h)), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
 
         # track middle tip
         x = int(
@@ -657,6 +688,7 @@ while cap.isOpened():
                 # gesture has changed from one to another
                 gesture_cancel_time = now
                 ok_origin = None
+                zoom_origin = None
                 if gesture == "ok":
                     # if previous gesture is OK, we need to end the alt-tab session
                     end_alt_tab_switcher()
@@ -695,6 +727,7 @@ while cap.isOpened():
                 )
                 gesture_cancel_time = now
                 ok_origin = None
+                zoom_origin = None
                 if gesture == "ok":
                     end_alt_tab_switcher()
                 print(
@@ -703,7 +736,7 @@ while cap.isOpened():
                 print("======================")
                 print()
                 gesture = None
-        
+
         track_hist.append((now, x, y, hand.landmark[0].x * SCREEN_W))
         # Keep a sliding window of samples (using middle finger, since it is used in all gestures)
         # And trim it to the desired time window (WINDOW_SEC)
@@ -715,6 +748,7 @@ while cap.isOpened():
             # already past the cd time -> this gesture should be killed!
             gesture_cancel_time = now
             ok_origin = None
+            zoom_origin = None
             if gesture == "ok":
                 end_alt_tab_switcher()
             print(
@@ -726,9 +760,10 @@ while cap.isOpened():
 
     if gesture is not None and len(track_hist) >= 3:
         # Draw gesture name if active
-        cv2.putText(
-            frame, gesture, (30, 60), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 4
-        )
+        if SHOW_PREVIEW:
+            cv2.putText(
+                frame, gesture, (30, 60), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 4
+            )
 
         if gesture == "two" or gesture == "four":
             swipe_direction = fast_swipe_detector(hand.landmark, track_hist, w, h, now)
@@ -770,50 +805,39 @@ while cap.isOpened():
         elif gesture == "ok":
             # 1) on first OK frame, set origin and open Alt-Tab
             if ok_origin is None:
-                ok_origin = (x, y)  # you compute x,y earlier from landmark[12]
+                ok_origin = [x, y]  # you compute x,y earlier from landmark[12]
                 start_alt_tab_switcher()
 
             # 2) map finger x to a target index (1..num_apps_cached)
             #    index 1 is the first app after the currently active one
             dx = x - ok_origin[0]
             # positive dx → move right; negative → left
-            ok_unitpixels = SCREEN_W / (num_apps_cached * 1.3)
+            ok_unitpixels = SCREEN_W / (num_apps_cached * 1.5)
             steps = round(dx / ok_unitpixels)
-            target_index = 1 + steps
+            if steps == 0:
+                continue  # no movement
             prefer_dir = "left" if steps < 0 else ("right" if steps > 0 else None)
-            update_alt_tab_selection(target_index, prefer_dir=prefer_dir)
-
-            # (Optional) Visual hint in your preview window
-            cv2.line(frame, (ok_origin[0], 0), (ok_origin[0], h), (0, 255, 255), 2)
-            cv2.putText(
-                frame,
-                f"target:{max(1, min(num_apps_cached, int(target_index)))}",
-                (30, 100),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.8,
-                (0, 255, 255),
-                2,
-            )
+            update_alt_tab_selection(steps, prefer_dir)
 
         elif gesture == "seven":
             # 1) on first OK frame, set origin
             if zoom_origin is None:
-                zoom_origin = (x, y)  # you compute x,y earlier from landmark[12]
+                zoom_origin = [x, y]  # you compute x,y earlier from landmark[12]
 
             # 2) map finger x to a target index (1..num_apps_cached)
             #    index 1 is the first app after the currently active one
             dy = y - zoom_origin[1]
             # positive dx → move right; negative → left
-            zoom_unitpixel = SCREEN_H / 10 # 10 units should be enough
+            zoom_unitpixel = SCREEN_H / 6  # 6 units should be enough
             steps = round(dy / zoom_unitpixel)
 
             if steps < 0:
                 for _ in range(-steps):
-                    pyautogui.hotkey('ctrl', '+')
+                    pyautogui.hotkey("ctrl", "+")
             else:
                 for _ in range(steps):
-                    pyautogui.hotkey('ctrl', '-')
-            zoom_origin = (x, y + dy)
+                    pyautogui.hotkey("ctrl", "-")
+            zoom_origin[1] += steps * zoom_unitpixel
 
     # --------- Render transparent overlay with fingertip cursor ----------
     hud = hud_buffer
@@ -828,15 +852,6 @@ while cap.isOpened():
 
         if gesture is not None and gesture == "ok" and ok_origin is not None:
             cv2.line(hud, (x, 0), (x, SCREEN_H), (0, 120, 255), 1)
-            cv2.putText(
-                hud,
-                f"target:{max(1, min(num_apps_cached, int(1 + round((x - ok_origin[0]) / float(ok_unitpixels)))))}",
-                (30, 120),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.8,
-                (255, 255, 255),
-                2,
-            )
 
     # Black stays transparent; non-black shows up
     cv2.imshow(HUD_WINDOW, hud)
