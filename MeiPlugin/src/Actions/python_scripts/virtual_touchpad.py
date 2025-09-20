@@ -56,6 +56,15 @@ last_seen_time = 0
 cancel_cooldown = 1  # seconds
 gesture_cancel_time = 0
 detected_gesture = None
+
+# fingers
+thumb_straight = False
+index_straight = False
+middle_straight = False
+ring_straight = False
+pinky_straight = False
+
+# ok variables
 ok_origin = None
 ok_unitpixels = None
 app_offset = 0
@@ -63,32 +72,11 @@ alt_switch_active = False
 last_target_index = None
 num_apps_cached = 0  # number of Alt-Tab apps on current desktop
 
-thumb_straight = False
-index_straight = False
-middle_straight = False
-ring_straight = False
-pinky_straight = False
-
-VX_REL_THRESH = 3.5  # in hand-widths per second (tune 3.0 ~ 5.0)
-DIST_REL_THRESH = 0.6  # must travel at least 0.6 hand-widths within WINDOW_SEC
-
 # variables for SPEED SWIPE DETECTION
 VX_THRESH = 2.5
-# Pixels/sec threshold to consider a "fast" swipe.
-# With 1280x720 frames, ~1000–1600 px/s is a good starting range.
-
-DIST_THRESH = 0.1
-# Require the horizontal distance to exceed this many pixels within the window,
-# as a fraction of frame width (e.g., 18%)
-
-HORIZ_RATIO = 0.7
-# How "horizontal" it must be: |vy| <= HORIZ_RATIO * |vx|
-
-WINDOW_SEC = 0.85
-# Time window (seconds) to estimate velocity over recent samples
-
-TRIGGER_COOLDOWN = 2
-# Debounce so one swipe only triggers one hotkey
+HORIZ_RATIO = 0.7 # How "horizontal" it must be: |vy| <= HORIZ_RATIO * |vx|
+WINDOW_SEC = 0.85 # Time window (seconds) to estimate velocity over recent samples
+TRIGGER_COOLDOWN = 2 # Debounce so one swipe only triggers one hotkey
 
 # Keep recent (t, x, y) samples for velocity estimation
 track_hist = deque()
@@ -98,6 +86,10 @@ last_trigger_time = 0.0
 TRAIL_MAX_POINTS = 40  # how many recent points to keep
 TRAIL_FADE_SEC = 0.5  # how long a point stays visible
 trail = deque(maxlen=TRAIL_MAX_POINTS)
+
+# ---- Pinch-to-Zoom (thumb+index) config/state ----
+zoom_origin = None
+zoom_unitpixel = None
 
 SHOW_PREVIEW = True
 
@@ -219,11 +211,21 @@ def is_four_gesture(lm):
         and pinky_straight
     )
 
+def is_seven_gesture(lm):
+    return (
+        thumb_straight
+        and index_straight
+        and (not middle_straight)
+        and (not ring_straight)
+        and (not pinky_straight)
+    )
 
 def decide_gesture(lm):
     calculate_all_straightness(lm)
     if is_two_gesture(lm):
         return "two"
+    if is_seven_gesture(lm):
+        return "seven"
     if is_ok_gesture(lm):
         return "ok"
     if is_four_gesture(lm):
@@ -589,6 +591,8 @@ def draw_gesture_points(hud_img, x, y, gesture, offset_px=80):
             (0, offset_px),
             (0, 2 * offset_px),
         ]  # 1 above, 2 under
+    elif gesture == "seven":
+        offsets = [(offset_px, -(offset_px//3)), ((offset_px//2), -(offset_px//3))]
 
     # Style: slightly smaller & dimmer than main cursor
     for dx, dy in offsets:
@@ -790,6 +794,26 @@ while cap.isOpened():
                 (0, 255, 255),
                 2,
             )
+
+        elif gesture == "seven":
+            # 1) on first OK frame, set origin
+            if zoom_origin is None:
+                zoom_origin = (x, y)  # you compute x,y earlier from landmark[12]
+
+            # 2) map finger x to a target index (1..num_apps_cached)
+            #    index 1 is the first app after the currently active one
+            dy = y - zoom_origin[1]
+            # positive dx → move right; negative → left
+            zoom_unitpixel = SCREEN_H / 10 # 10 units should be enough
+            steps = round(dy / zoom_unitpixel)
+
+            if steps < 0:
+                for _ in range(-steps):
+                    pyautogui.hotkey('ctrl', '+')
+            else:
+                for _ in range(steps):
+                    pyautogui.hotkey('ctrl', '-')
+            zoom_origin = (x, y + dy)
 
     # --------- Render transparent overlay with fingertip cursor ----------
     hud = hud_buffer
