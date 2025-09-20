@@ -73,7 +73,7 @@ VX_REL_THRESH = 3.5  # in hand-widths per second (tune 3.0 ~ 5.0)
 DIST_REL_THRESH = 0.6  # must travel at least 0.6 hand-widths within WINDOW_SEC
 
 # variables for SPEED SWIPE DETECTION
-VX_THRESH = 1.5
+VX_THRESH = 2.5
 # Pixels/sec threshold to consider a "fast" swipe.
 # With 1280x720 frames, ~1000–1600 px/s is a good starting range.
 

@@ -10,17 +10,18 @@ MeiPlugin/
 │   └── Actions/
 │       ├── *.cs                # C# Loupedeck plugin commands
 │       │   ├── BoxingCommand.cs
-│       │   ├── BrightnessCommand.cs
-│       │   ├── SmartScreenShot.cs
-│       │   ├── MeetingPresentDetection.cs
-│       │   ├── RecordWithMarksCommand.cs
-│       │   └── ScrrenShotToLatex.cs
+│       │   ├── BrightnessCommand.cs
+│       │   ├── MeetingPresentDetection.cs
+│       │   ├── RecordWithMarksCommand.cs
+│       │   ├── ScrrenShotToLatex.cs
+│       │   ├── SmartScreenShot.cs
 │       └── python_scripts/     # Python command implementations
-│           ├── boxing.py
-│           ├── brightness.py
-│           ├── call_paste_target.py
-│           ├── fixed_meeting.py
-│           └── rec.py
+│       │   ├── boxing.py
+│       │   ├── brightness.py
+│       │   ├── call_paste_target.py
+│       │   ├── fixed_meeting.py
+│       │   ├── rec.py
+│       │   └── virtual_touchpad.py
 ├── .vscode/                    # VS Code configuration
 └── MeiPlugin.sln              # Solution file
 ```
