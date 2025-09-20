@@ -2,7 +2,7 @@ using System;
 using System.Threading;
 using System.Windows.Media.Imaging;
 
-namespace Loupedeck.TestPlugin
+namespace Loupedeck.MeiPlugin
 {
     public class PulseEffectCommand : PluginDynamicCommand
     {
@@ -15,7 +15,7 @@ namespace Loupedeck.TestPlugin
         // 圖片資源路徑陣列 - 按照官方範例格式
         private readonly string[] _imageResourcePaths;
         private readonly int _intervalMs = 50;  // 50毫秒間隔
-        private readonly int _totalFrames = 119; // 總共119幀
+        private readonly int _totalFrames = 120; // 總共120幀
 
         // === 建構函式 - 按照官方範例格式 ===
         public PulseEffectCommand() 
@@ -39,7 +39,7 @@ namespace Loupedeck.TestPlugin
                 try
                 {
                     // 按照官方文件：使用 PluginResources.FindFile() 找到嵌入資源
-                    // 圖片檔案命名：frame_001.png, frame_002.png, ..., frame_040.png
+                    // 圖片檔案命名：001.png, 002.png, ..., 120.png
                     string fileName = $"{(i + 1):D3}.png";
                     _imageResourcePaths[i] = PluginResources.FindFile(fileName);
                 }
@@ -47,7 +47,7 @@ namespace Loupedeck.TestPlugin
                 {
                     // 如果圖片檔案不存在，設為 null
                     _imageResourcePaths[i] = null;
-                    System.Diagnostics.Debug.WriteLine($"找不到圖片檔案: frame_{(i + 1):D3}.png - {ex.Message}");
+                    System.Diagnostics.Debug.WriteLine($"找不到圖片檔案: {(i + 1):D3}.png - {ex.Message}");
                 }
             }
         }
@@ -142,7 +142,7 @@ namespace Loupedeck.TestPlugin
             if (_isPlaying)
             {
                 // 播放模式：顯示當前脈衝幀
-                return LoadCurrentPulseFrame();
+                return LoadCurrentPulseFrame(imageSize);
             }
             else
             {
@@ -152,7 +152,7 @@ namespace Loupedeck.TestPlugin
         }
 
         // === 載入當前脈衝幀 - 按照官方 PluginResources.ReadImage 方式 ===
-        private BitmapImage LoadCurrentPulseFrame()
+        private BitmapImage LoadCurrentPulseFrame(PluginImageSize imageSize)
         {
             try
             {
@@ -166,14 +166,14 @@ namespace Loupedeck.TestPlugin
                 else
                 {
                     // 圖片檔案不存在，使用程式生成的預設脈衝圖片
-                    return CreateDefaultPulseImage(_currentFrameIndex);
+                    return CreateDefaultPulseImage(_currentFrameIndex, imageSize);
                 }
             }
             catch (Exception ex)
             {
                 // 載入失敗，顯示錯誤圖片
                 System.Diagnostics.Debug.WriteLine($"載入脈衝圖片失敗: {ex.Message}");
-                return CreateErrorImage(_currentFrameIndex);
+                return CreateErrorImage(_currentFrameIndex, imageSize);
             }
         }
 
@@ -190,9 +190,9 @@ namespace Loupedeck.TestPlugin
         }
 
         // === 創建預設脈衝圖片（當嵌入圖片不存在時）===
-        private BitmapImage CreateDefaultPulseImage(int frameIndex)
+        private BitmapImage CreateDefaultPulseImage(int frameIndex, PluginImageSize imageSize)
         {
-            using (var bitmapBuilder = new BitmapBuilder(PluginImageSize.Width80))
+            using (var bitmapBuilder = new BitmapBuilder(imageSize))
             {
                 // 計算脈衝強度（0-1之間的正弦波）
                 double pulseIntensity = (Math.Sin((double)frameIndex / _totalFrames * 2 * Math.PI) + 1) / 2;
@@ -202,32 +202,21 @@ namespace Loupedeck.TestPlugin
                 
                 // 顯示脈衝效果文字和強度
                 string intensityBar = new string('█', (int)(pulseIntensity * 10));
-                bitmapBuilder.DrawText($"PULSE\n{intensityBar}\n{frameIndex + 1}/40");
+                bitmapBuilder.DrawText($"PULSE\n{intensityBar}\n{frameIndex + 1}/{_totalFrames}");
                 
                 return bitmapBuilder.ToImage();
             }
         }
 
         // === 創建錯誤圖片 ===
-        private BitmapImage CreateErrorImage(int frameIndex)
+        private BitmapImage CreateErrorImage(int frameIndex, PluginImageSize imageSize)
         {
-            using (var bitmapBuilder = new BitmapBuilder(PluginImageSize.Width80))
+            using (var bitmapBuilder = new BitmapBuilder(imageSize))
             {
                 bitmapBuilder.DrawText($"ERROR\nFrame {frameIndex + 1}\nLoad Failed");
                 
                 return bitmapBuilder.ToImage();
             }
-        }
-
-        // === 清理資源 ===
-        protected override void Dispose(bool disposing)
-        {
-            if (disposing)
-            {
-                // 停止計時器並清理資源
-                PausePulse();
-            }
-            base.Dispose(disposing);
         }
     }
 }
