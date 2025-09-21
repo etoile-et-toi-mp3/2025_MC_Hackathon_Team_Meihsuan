@@ -11,8 +11,8 @@ T_FALLBACK = 0.08  # SendInput fallback 單步延遲
 
 # ---------------- Paths -----------------
 BASE = Path(os.environ.get(
-    "MEI_LOG_DIR",
-    r"C:\Users\miche\Documents\Loupedeck\MeiPlugin\ScreenRecordMarks"
+    "FloWork_LOG_DIR",
+    r"C:\Users\miche\Documents\Loupedeck\FloWorkPlugin\ScreenRecordMarks"
 ))
 BASE.mkdir(parents=True, exist_ok=True)
 DOCS    = BASE
@@ -100,20 +100,27 @@ def _write_detected_video(log_path: Path, start_iso: str):
                 f.write("# Detected video: <none found since session start>\n")
     except Exception:
         pass
-    
+
 # ---------------- Desktop note file helpers ----------------
 def _desktop_dir():
     up = os.environ.get("USERPROFILE") or str(Path.home())
     d = Path(up) / "Desktop"
     return d if d.exists() else Path.home() / "Desktop"
-    # return Path(r"C:\Users\seash\Videos\Captures")haha
+    # return Path(r"C:\Users\seash\Videos\Captures")
+
+# def _desktop_note_path(session_id: str) -> Path:
+#     dirs = _captures_dirs()
+#     # 每個 session 一個獨立檔，避免覆蓋
+#     return dirs[0] / f"MeiRecord_Notes_{session_id}.txt"
 
 def _desktop_note_path(session_id: str) -> Path:
-    dir = Path(r"C:\Users\miche\Videos\Captures")
-    # dirs = _captures_dirs()
-    # 每個 session 一個獨立檔，避免覆蓋
-    # return _captures_dirs() / f"MeiRecorrd_Notes_{session_id}.txt"
-    return dir / f"MeiRecord_Notes_{session_id}.txt"
+    base = Path(r"C:\Users\miche\Videos\Captures")
+    notes_dir = base / "FloworkNotes"        # 新增的子資料夾
+    try:
+        notes_dir.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+    return notes_dir / f"FloWorkRecord_Notes_{session_id}.txt"
 
 def _init_desktop_note(session_id: str):
     """建立/覆寫桌面筆記檔，寫入標頭"""
