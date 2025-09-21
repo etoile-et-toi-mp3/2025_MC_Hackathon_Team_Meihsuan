@@ -1,0 +1,14 @@
+/Users/annchen/nycu/Hackthon/2025_MC_Hackathon_Team_Meihsuan/MeihsuanPlugin/obj/Debug/MeihsuanPlugin.csproj.AssemblyReference.cache
+/Users/annchen/nycu/Hackthon/2025_MC_Hackathon_Team_Meihsuan/MeihsuanPlugin/obj/Debug/MeihsuanPlugin.GeneratedMSBuildEditorConfig.editorconfig
+/Users/annchen/nycu/Hackthon/2025_MC_Hackathon_Team_Meihsuan/MeihsuanPlugin/obj/Debug/MeihsuanPlugin.AssemblyInfoInputs.cache
+/Users/annchen/nycu/Hackthon/2025_MC_Hackathon_Team_Meihsuan/MeihsuanPlugin/obj/Debug/MeihsuanPlugin.AssemblyInfo.cs
+/Users/annchen/nycu/Hackthon/2025_MC_Hackathon_Team_Meihsuan/MeihsuanPlugin/obj/Debug/MeihsuanPlugin.csproj.CoreCompileInputs.cache
+/Users/annchen/nycu/Hackthon/2025_MC_Hackathon_Team_Meihsuan/MeihsuanPlugin/obj/Debug/MeihsuanPlugin.sourcelink.json
+/Users/annchen/nycu/Hackthon/2025_MC_Hackathon_Team_Meihsuan/MeihsuanPlugin/bin/Debug/bin/MeihsuanPlugin.deps.json
+/Users/annchen/nycu/Hackthon/2025_MC_Hackathon_Team_Meihsuan/MeihsuanPlugin/bin/Debug/bin/MeihsuanPlugin.dll
+/Users/annchen/nycu/Hackthon/2025_MC_Hackathon_Team_Meihsuan/MeihsuanPlugin/bin/Debug/bin/MeihsuanPlugin.pdb
+/Users/annchen/nycu/Hackthon/2025_MC_Hackathon_Team_Meihsuan/MeihsuanPlugin/obj/Debug/Meihsuan.A2BBEC8A.Up2Date
+/Users/annchen/nycu/Hackthon/2025_MC_Hackathon_Team_Meihsuan/MeihsuanPlugin/obj/Debug/MeihsuanPlugin.dll
+/Users/annchen/nycu/Hackthon/2025_MC_Hackathon_Team_Meihsuan/MeihsuanPlugin/obj/Debug/refint/MeihsuanPlugin.dll
+/Users/annchen/nycu/Hackthon/2025_MC_Hackathon_Team_Meihsuan/MeihsuanPlugin/obj/Debug/MeihsuanPlugin.pdb
+/Users/annchen/nycu/Hackthon/2025_MC_Hackathon_Team_Meihsuan/MeihsuanPlugin/obj/Debug/ref/MeihsuanPlugin.dll

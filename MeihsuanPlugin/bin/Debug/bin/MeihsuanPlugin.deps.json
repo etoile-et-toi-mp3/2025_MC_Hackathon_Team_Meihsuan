@@ -1,0 +1,172 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v8.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v8.0": {
+      "MeihsuanPlugin/1.0.0": {
+        "dependencies": {
+          "Newtonsoft.Json": "13.0.4",
+          "PluginApi": "6.2.1.714"
+        },
+        "runtime": {
+          "MeihsuanPlugin.dll": {}
+        }
+      },
+      "Newtonsoft.Json/13.0.4": {
+        "runtime": {
+          "lib/net6.0/Newtonsoft.Json.dll": {
+            "assemblyVersion": "13.0.0.0",
+            "fileVersion": "13.0.4.30916"
+          }
+        }
+      },
+      "PluginApi/6.2.1.714": {
+        "runtime": {
+          "PluginApi.dll": {
+            "assemblyVersion": "6.2.1.714",
+            "fileVersion": "6.2.1.714"
+          }
+        }
+      },
+      "SkiaSharp/2.88.0.0": {
+        "runtime": {
+          "SkiaSharp.dll": {
+            "assemblyVersion": "2.88.0.0",
+            "fileVersion": "2.88.8.0"
+          }
+        }
+      },
+      "Svg.Skia/2.0.0.0": {
+        "runtime": {
+          "Svg.Skia.dll": {
+            "assemblyVersion": "2.0.0.0",
+            "fileVersion": "2.0.0.0"
+          }
+        }
+      },
+      "websocket-sharp/6.2.1.714": {
+        "runtime": {
+          "websocket-sharp.dll": {
+            "assemblyVersion": "6.2.1.714",
+            "fileVersion": "6.2.1.714"
+          }
+        }
+      },
+      "YamlDotNet/16.0.0.0": {
+        "runtime": {
+          "YamlDotNet.dll": {
+            "assemblyVersion": "16.0.0.0",
+            "fileVersion": "16.3.0.0"
+          }
+        }
+      },
+      "LogiEventTracing/6.2.1.714": {
+        "runtime": {
+          "LogiEventTracing.dll": {
+            "assemblyVersion": "6.2.1.714",
+            "fileVersion": "6.2.1.714"
+          }
+        }
+      },
+      "Svg.Model/2.0.0.0": {
+        "runtime": {
+          "Svg.Model.dll": {
+            "assemblyVersion": "2.0.0.0",
+            "fileVersion": "2.0.0.0"
+          }
+        }
+      },
+      "ShimSkiaSharp/2.0.0.0": {
+        "runtime": {
+          "ShimSkiaSharp.dll": {
+            "assemblyVersion": "2.0.0.0",
+            "fileVersion": "2.0.0.0"
+          }
+        }
+      },
+      "Svg.Custom/2.0.0.0": {
+        "runtime": {
+          "Svg.Custom.dll": {
+            "assemblyVersion": "2.0.0.0",
+            "fileVersion": "2.0.0.0"
+          }
+        }
+      },
+      "ExCSS/4.2.3.0": {
+        "runtime": {
+          "ExCSS.dll": {
+            "assemblyVersion": "4.2.3.0",
+            "fileVersion": "4.2.3.0"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "MeihsuanPlugin/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "Newtonsoft.Json/13.0.4": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-pdgNNMai3zv51W5aq268sujXUyx7SNdE2bj1wZcWjAQrKMFZV260lbqYop1d2GM67JI1huLRwxo9ZqnfF/lC6A==",
+      "path": "newtonsoft.json/13.0.4",
+      "hashPath": "newtonsoft.json.13.0.4.nupkg.sha512"
+    },
+    "PluginApi/6.2.1.714": {
+      "type": "reference",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "SkiaSharp/2.88.0.0": {
+      "type": "reference",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "Svg.Skia/2.0.0.0": {
+      "type": "reference",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "websocket-sharp/6.2.1.714": {
+      "type": "reference",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "YamlDotNet/16.0.0.0": {
+      "type": "reference",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "LogiEventTracing/6.2.1.714": {
+      "type": "reference",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "Svg.Model/2.0.0.0": {
+      "type": "reference",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "ShimSkiaSharp/2.0.0.0": {
+      "type": "reference",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "Svg.Custom/2.0.0.0": {
+      "type": "reference",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "ExCSS/4.2.3.0": {
+      "type": "reference",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}
