@@ -42,7 +42,7 @@ namespace Loupedeck.FloWorkPlugin
                 string pythonPath = @"C:/Users/miche/AppData/Local/Microsoft/WindowsApps/python3.12.exe";
                 string scriptPath = @"D:\FloWorkPlugin\src\Actions\python_scripts\meeting.py";
 
-                string arguments = $"\"{scriptPath}\" --mode meet --obs-password 20050616 --camera-source-name \"Video Capture Device\" --log-level INFO";
+                string arguments = $"\"{scriptPath}\" --mode zoom --obs-password 20050616 --camera-source-name \"Video Capture Device\" --log-level INFO";
 
                 if (!File.Exists(pythonPath))
                 {
