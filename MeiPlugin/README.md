@@ -87,8 +87,7 @@ MeiPlugin/
 
 1. **Install Python Dependencies**:
    ```bash
-   pip install opencv-python mediapipe numpy pygame screen-brightness-control
-   pip install pyautogui pywinctl customtkinter pygetwindow obsws-python keyboard
+   pip install -r requirements.txt
    ```
 
 2. **Audio Files**:
